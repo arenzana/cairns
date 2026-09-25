@@ -100,7 +100,14 @@ services:
       # the Docker gateway. Requires OLLAMA_HOST=0.0.0.0 on the host. Point
       # OLLAMA_URL at another machine in .env (a GPU box on the tailnet, say)
       # and none of that applies: the host runs no Ollama at all.
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Embedders in preference order, comma separated, e.g.
+      #   OLLAMA_URLS=http://gpu-box:11434,http://server:11434
+      # The local endpoint below is always appended last, so an empty list still
+      # works and a sleeping GPU box costs one dial timeout, not a failed search.
+      OLLAMA_URLS: ${OLLAMA_URLS:-}
+      # What "local" means in here: 127.0.0.1 is the container, not the host.
+      OLLAMA_LOCAL_URL: ${OLLAMA_LOCAL_URL:-http://host.docker.internal:11434}
+      OLLAMA_URL: ${OLLAMA_URL:-}
       # Used only while OLLAMA_URL is unreachable. See the ollama service above.
       OLLAMA_FALLBACK_URL: ${OLLAMA_FALLBACK_URL:-}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
@@ -133,7 +140,14 @@ services:
       DATABASE_URL: postgres://cairns:${POSTGRES_PASSWORD}@postgres:5432/cairns
       # Defaults to Ollama on this host, over the Docker gateway. Set OLLAMA_URL
       # in .env to point at another machine (a GPU box on the tailnet, say).
-      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Embedders in preference order, comma separated, e.g.
+      #   OLLAMA_URLS=http://gpu-box:11434,http://server:11434
+      # The local endpoint below is always appended last, so an empty list still
+      # works and a sleeping GPU box costs one dial timeout, not a failed search.
+      OLLAMA_URLS: ${OLLAMA_URLS:-}
+      # What "local" means in here: 127.0.0.1 is the container, not the host.
+      OLLAMA_LOCAL_URL: ${OLLAMA_LOCAL_URL:-http://host.docker.internal:11434}
+      OLLAMA_URL: ${OLLAMA_URL:-}
       # Used only while OLLAMA_URL is unreachable. See the ollama service above.
       OLLAMA_FALLBACK_URL: ${OLLAMA_FALLBACK_URL:-}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}

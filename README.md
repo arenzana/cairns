@@ -115,6 +115,24 @@ neither binds `0.0.0.0` nor needs a firewall rule to let its own containers
 back in. A single query embeds in about 70ms on it; a full index would take
 hours, which is why it is a fallback and not the default.
 
+### Choosing where embedding runs
+
+Embedding is the only part that wants real hardware. Name embedders in
+preference order and the local one is always appended last:
+
+```sh
+OLLAMA_URLS=http://gpu-box:11434,http://server:11434
+```
+
+Order by **fastest when awake**, not by most reliable. An unreachable endpoint
+costs one 5-second dial timeout and then the next is tried, so putting a GPU box
+that sleeps at the front is close to free, and the always-on machine behind it
+catches everything else. Only transport failures fail over: a model or dimension
+error means the same thing everywhere, so failing over would only hide it.
+
+Inside a container, `127.0.0.1` is the container, so `OLLAMA_LOCAL_URL` sets what
+"local" means there (compose already points it at `host.docker.internal`).
+
 ### Register it with an agent
 
 ```sh

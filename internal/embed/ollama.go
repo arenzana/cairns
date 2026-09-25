@@ -15,8 +15,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"os"
+	"slices"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // retryPrimaryAfter is how long a failed endpoint is skipped before it is
@@ -260,4 +264,55 @@ func (c *Client) Ping(ctx context.Context) error {
 		return fmt.Errorf("ollama probe returned %d vectors", len(v))
 	}
 	return nil
+}
+
+// LocalURL is the embedder of last resort: this machine.
+const LocalURL = "http://127.0.0.1:11434"
+
+// EndpointsFromEnv resolves the embedder preference list.
+//
+//	OLLAMA_URLS=http://gpu-box:11434,http://server:11434
+//
+// Comma or whitespace separated, in preference order, and the local endpoint is
+// always appended as the last resort. That ordering is the point: the fastest
+// machine is often the one least likely to be awake, so the list runs from
+// "best when available" to "always there", and a sleeping GPU box costs one
+// dial timeout rather than a failed search.
+//
+// OLLAMA_LOCAL_URL overrides what "local" means, which containers need: inside
+// one, 127.0.0.1 is the container itself and the host is host.docker.internal.
+//
+// OLLAMA_URL and OLLAMA_FALLBACK_URL still work and are read only when
+// OLLAMA_URLS is unset.
+func EndpointsFromEnv() []string {
+	var out []string
+	add := func(u string) {
+		u = strings.TrimSpace(u)
+		if u == "" {
+			return
+		}
+		// Preserve order, drop duplicates: a list that names the same endpoint
+		// twice would retry a dead host before trying a live one.
+		if !slices.Contains(out, u) {
+			out = append(out, u)
+		}
+	}
+
+	if list := os.Getenv("OLLAMA_URLS"); strings.TrimSpace(list) != "" {
+		for _, u := range strings.FieldsFunc(list, func(r rune) bool {
+			return r == ',' || unicode.IsSpace(r)
+		}) {
+			add(u)
+		}
+	} else {
+		add(os.Getenv("OLLAMA_URL"))
+		add(os.Getenv("OLLAMA_FALLBACK_URL"))
+	}
+
+	local := LocalURL
+	if v := strings.TrimSpace(os.Getenv("OLLAMA_LOCAL_URL")); v != "" {
+		local = v
+	}
+	add(local)
+	return out
 }

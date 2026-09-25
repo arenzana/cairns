@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -155,5 +156,80 @@ func TestStillTriesWhenEveryEndpointIsCoolingDown(t *testing.T) {
 
 	if _, err := c.Embed(context.Background(), []string{"a"}); err != nil {
 		t.Fatalf("expected an attempt anyway, got %v", err)
+	}
+}
+
+func TestEndpointsFromEnv(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  map[string]string
+		want []string
+	}{
+		{
+			name: "nothing set falls back to local",
+			want: []string{LocalURL},
+		},
+		{
+			name: "ordered list, local appended last",
+			env:  map[string]string{"OLLAMA_URLS": "http://gpu-box:11434,http://server:11434"},
+			want: []string{"http://gpu-box:11434", "http://server:11434", LocalURL},
+		},
+		{
+			name: "whitespace and newlines separate too",
+			env:  map[string]string{"OLLAMA_URLS": " http://a:1 ,\n http://b:2 "},
+			want: []string{"http://a:1", "http://b:2", LocalURL},
+		},
+		{
+			name: "duplicates collapse, first position wins",
+			env:  map[string]string{"OLLAMA_URLS": "http://a:1,http://b:2,http://a:1"},
+			want: []string{"http://a:1", "http://b:2", LocalURL},
+		},
+		{
+			name: "naming local explicitly does not duplicate it",
+			env:  map[string]string{"OLLAMA_URLS": LocalURL + ",http://a:1"},
+			want: []string{LocalURL, "http://a:1"},
+		},
+		{
+			name: "OLLAMA_LOCAL_URL redefines the last resort, for containers",
+			env: map[string]string{
+				"OLLAMA_URLS":      "http://gpu-box:11434",
+				"OLLAMA_LOCAL_URL": "http://host.docker.internal:11434",
+			},
+			want: []string{"http://gpu-box:11434", "http://host.docker.internal:11434"},
+		},
+		{
+			name: "the old two-variable form still works",
+			env: map[string]string{
+				"OLLAMA_URL":          "http://a:1",
+				"OLLAMA_FALLBACK_URL": "http://b:2",
+			},
+			want: []string{"http://a:1", "http://b:2", LocalURL},
+		},
+		{
+			name: "OLLAMA_URLS wins over the old pair",
+			env: map[string]string{
+				"OLLAMA_URLS": "http://new:1",
+				"OLLAMA_URL":  "http://old:1",
+			},
+			want: []string{"http://new:1", LocalURL},
+		},
+		{
+			name: "an empty list is not a configuration",
+			env:  map[string]string{"OLLAMA_URLS": "  ", "OLLAMA_URL": "http://a:1"},
+			want: []string{"http://a:1", LocalURL},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, k := range []string{"OLLAMA_URLS", "OLLAMA_URL", "OLLAMA_FALLBACK_URL", "OLLAMA_LOCAL_URL"} {
+				t.Setenv(k, "")
+			}
+			for k, v := range tc.env {
+				t.Setenv(k, v)
+			}
+			got := EndpointsFromEnv()
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("EndpointsFromEnv() = %v, want %v", got, tc.want)
+			}
+		})
 	}
 }
