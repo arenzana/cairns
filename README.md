@@ -14,12 +14,23 @@ call.
 
 It speaks MCP, so a coding agent can search your notes as a tool.
 
+![the cairns dashboard](assets/dashboard.png)
+
+The map is your corpus projected to three dimensions by PCA, so the clusters are
+real: a search lights up the documents that answered it and dims the rest, which
+is how you see *where* an answer lives rather than only what it says.
+
+Or from the API, and identically through the MCP tool:
+
 ```
 $ curl 'localhost:8765/api/search?q=how+do+I+roll+back+a+failed+deploy'
 
 97%  Deployment runbook          fs:runbooks/deployments.md
      matched under: Deployments > Rolling back
+     6 passages in this document matched
 28%  Operator handbook           fs:ops/handbook.md
+
+Vector search already had this first; the rerank agreed and scored it 97%.
 ```
 
 ## How it works
