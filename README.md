@@ -171,6 +171,58 @@ idempotent, that `UpdatedAt` is the origin's own timestamp (a zero value quietly
 re-embeds your entire corpus every sweep), that `URI` is stable and prefixed,
 that `Fetch` errors on an unknown id instead of indexing an empty document.
 
+### Steering what a document matches
+
+An embedding is a pure function of the text you feed the model. The model is
+frozen, so the only way to move a document through the vector space is to change
+what gets embedded. The filesystem source reads an optional `about:` from YAML
+frontmatter and folds it into every chunk of that document:
+
+```markdown
+---
+title: Move to Spain
+about: Relocating from the US to Madrid. Visas, shipping, schools, the dog.
+---
+
+- [[Fito]]
+- Woof Airlines
+- Bring person
+```
+
+This exists for notes that are checklists, link lists or bullet fragments. The
+training pairs behind embedding models are overwhelmingly prose, so a note like
+the one above carries almost no embeddable meaning and is invisible to semantic
+search no matter how it is chunked. Measured on exactly that note, one line of
+`about:` moved it from 0.410 to **0.309** cosine distance for *what do I need to
+do to move to Madrid*, and it also got closer to *relocation checklist*, a query
+sharing no words with the hint.
+
+Editing frontmatter changes the file, so the content hash changes and the next
+sweep re-embeds that document by itself. No `-reindex`, no restart.
+
+**Use it sparingly.** Needing it on many documents means the chunker or the
+retrieval mix is wrong, and hand-annotating notes is papering over that. A
+handful is maintenance; fifty is a symptom.
+
+<details>
+<summary>Why not hybrid keyword search instead?</summary>
+
+The obvious alternative is blending BM25 with vector similarity, and this schema
+has a populated, GIN-indexed `tsv` column ready for it. It was measured and
+rejected: Postgres full-text ranking is **not** BM25. `ts_rank_cd` has no IDF
+term, so with the `simple` config (required, because the corpus is multilingual
+and `english` would mangle Spanish) the word `to` appears in 50.9% of chunks and
+counts as much as `spain` at 4.7%. It has no real length normalisation either,
+so a short note mentioning a term once loses to a long list mentioning it twenty
+times. Across every `ts_rank` normalisation flag, the target note ranked between
+70th and 505th lexically, against a 40-document candidate window. No mixing
+weight rescues that.
+
+Real hybrid retrieval here needs a real BM25, which means a Postgres extension
+such as ParadeDB `pg_search` or VectorChord-bm25. Worth it if a whole class of
+queries is blind to the embedder; not worth it for a handful of notes.
+</details>
+
 ## Measuring it
 
 Retrieval quality is not eyeballable. `cairns-eval` runs a labelled set and

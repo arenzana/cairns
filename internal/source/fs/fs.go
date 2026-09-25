@@ -101,9 +101,14 @@ func (f *FS) Fetch(ctx context.Context, r source.Ref) (source.Doc, error) {
 		return source.Doc{}, fmt.Errorf("read %s: %w", r.ExternalID, err)
 	}
 	d := source.Doc{Ref: r, Body: string(b)}
-	if t := frontmatterTitle(d.Body); t != "" {
+	if t := frontmatterField(d.Body, "title"); t != "" {
 		d.Title = t
 	}
+	// Optional steering. See source.Doc.About: this is the one lever an author
+	// has over where a document lands in the vector space, and it costs nothing
+	// when absent. Editing it changes the file, so the content hash changes and
+	// the next sweep re-embeds this document on its own; no -reindex needed.
+	d.About = frontmatterField(d.Body, "about")
 	return d, nil
 }
 
@@ -120,10 +125,12 @@ func (f *FS) AbsPath(externalID string) string {
 	return filepath.Join(f.root, externalID)
 }
 
-// frontmatterTitle pulls `title:` out of YAML frontmatter when present. A note
-// whose title differs from its filename is common, and the human-chosen one is
-// the better label in search results.
-func frontmatterTitle(body string) string {
+// frontmatterField pulls a single-line scalar out of YAML frontmatter.
+//
+// Deliberately not a YAML parser. Two fields are read, both plain strings on
+// one line, and a real parser would be a dependency and a parse-failure mode
+// in exchange for syntax nobody writes in a note's frontmatter.
+func frontmatterField(body, name string) string {
 	if !strings.HasPrefix(body, "---") {
 		return ""
 	}
@@ -134,7 +141,7 @@ func frontmatterTitle(body string) string {
 	}
 	for _, line := range strings.Split(rest[:end], "\n") {
 		line = strings.TrimSpace(line)
-		if after, ok := strings.CutPrefix(line, "title:"); ok {
+		if after, ok := strings.CutPrefix(line, name+":"); ok {
 			return strings.Trim(strings.TrimSpace(after), `"'`)
 		}
 	}

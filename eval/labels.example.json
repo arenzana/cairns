@@ -15,6 +15,11 @@
     "URIs are what search returns: 'fs:relative/path.md' for files,",
     "'twenty:person/<id>' for CRM records.",
     "",
+    "A note that is a checklist or a list of links may be unfindable no",
+    "matter how you chunk it, because embedding models are trained on prose.",
+    "Give that note an 'about:' line in its frontmatter rather than tuning",
+    "retrieval around it. See the README.",
+    "",
     "Keep it small and real. Twelve questions you actually asked beat a",
     "hundred invented ones, but note that a set this size cannot resolve an",
     "MRR difference under about 0.05: one case is worth 1/12 of the metric."

@@ -25,6 +25,25 @@ type Ref struct {
 type Doc struct {
 	Ref
 	Body string
+
+	// About is optional document-level context supplied by the author, folded
+	// into every chunk's embedded text alongside the title.
+	//
+	// It exists because an embedding is a pure function of the text you feed
+	// the model. The model is frozen and cannot be steered, but the input can,
+	// so a sentence of prose here moves the whole document through the vector
+	// space. That is the only lever a source has over where its documents land.
+	//
+	// The case it was built for: a note that is a checklist of wikilinks and
+	// bullet fragments carries almost no embeddable meaning, because the
+	// training pairs behind these models are prose. Such a note is invisible to
+	// semantic search no matter how well it is chunked. One line of About fixes
+	// it; measured on such a note, cosine distance to "what do I need to do to
+	// move to Madrid" fell from 0.410 to 0.309.
+	//
+	// Use it sparingly. Needing it for many documents is a signal that the
+	// chunker or the retrieval mix is wrong, not that every note wants a hint.
+	About string
 }
 
 // Source is the whole contract. Three methods, no lifecycle, no state.

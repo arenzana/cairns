@@ -45,8 +45,12 @@ type Chunk struct {
 // invisible to the vector: a note literally called "Move to Spain" did not
 // contain the string "Move to Spain" in anything that was embedded, and ranked
 // 8th for a query about moving to Spain.
-func (c Chunk) EmbedText(title string) string {
-	parts := make([]string, 0, 3)
+// about is optional author-supplied context. It sits between the heading path
+// and the body, applies to EVERY chunk of the document because it describes the
+// document rather than any one passage, and is the one way to steer where a
+// document lands without touching the model.
+func (c Chunk) EmbedText(title, about string) string {
+	parts := make([]string, 0, 2)
 	if title != "" {
 		parts = append(parts, title)
 	}
@@ -54,10 +58,16 @@ func (c Chunk) EmbedText(title string) string {
 		parts = append(parts, c.Heading)
 	}
 	prefix := strings.Join(parts, " > ")
-	if prefix == "" {
-		return c.Body
+
+	segments := make([]string, 0, 3)
+	if prefix != "" {
+		segments = append(segments, prefix)
 	}
-	return prefix + "\n\n" + c.Body
+	if about = strings.TrimSpace(about); about != "" {
+		segments = append(segments, about)
+	}
+	segments = append(segments, c.Body)
+	return strings.Join(segments, "\n\n")
 }
 
 // Split turns a markdown document into chunks.

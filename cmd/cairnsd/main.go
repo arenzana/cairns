@@ -275,7 +275,7 @@ func sweep(ctx context.Context, log *slog.Logger, st *store.Store, emb *embed.Cl
 			continue
 		}
 
-		vecs, err := embedAll(ctx, emb, chunks, doc.Title)
+		vecs, err := embedAll(ctx, emb, chunks, doc.Title, doc.About)
 		if err != nil {
 			log.Warn("embed", "source", src.Name(), "id", r.ExternalID, "err", err)
 			res.Failed++
@@ -328,7 +328,7 @@ func sweep(ctx context.Context, log *slog.Logger, st *store.Store, emb *embed.Cl
 
 // embedAll embeds one document's chunks across a small worker pool, preserving
 // order so vectors line up with the chunks they came from.
-func embedAll(ctx context.Context, emb *embed.Client, chunks []chunk.Chunk, title string) ([][]float32, error) {
+func embedAll(ctx context.Context, emb *embed.Client, chunks []chunk.Chunk, title, about string) ([][]float32, error) {
 	out := make([][]float32, len(chunks))
 	errs := make([]error, len(chunks))
 
@@ -339,7 +339,7 @@ func embedAll(ctx context.Context, emb *embed.Client, chunks []chunk.Chunk, titl
 		go func() {
 			defer wg.Done()
 			for i := range work {
-				v, err := emb.Embed(ctx, []string{chunks[i].EmbedText(title)})
+				v, err := emb.Embed(ctx, []string{chunks[i].EmbedText(title, about)})
 				if err != nil {
 					errs[i] = err
 					continue

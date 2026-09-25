@@ -164,6 +164,18 @@ scheme so results are clickable in the dashboard.
 headings, keeps code fences intact, and prefixes each chunk with its
 `title > heading` path before embedding.
 
+**`Doc.About` is your one lever over placement.** An embedding is a pure
+function of its input text, so a frozen model cannot be steered but its input
+can. Anything you put in `About` is folded into every chunk of that document,
+between the heading path and the body. Use it when a record carries meaning the
+prose does not: a CRM contact whose body is mostly field values, a note that is
+a list of links. The filesystem source populates it from an `about:` key in YAML
+frontmatter; your source can populate it from anything.
+
+Keep it short and descriptive, and resist making it a keyword dump. It is
+embedded as text, so it works by meaning, and a list of disconnected nouns
+embeds as a list of disconnected nouns.
+
 ## Why listing and not watching
 
 Reconciliation is a full listing every sweep, not a file watcher. APIs have no
