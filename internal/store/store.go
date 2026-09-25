@@ -273,3 +273,24 @@ func (s *Store) ResolveLinks(ctx context.Context) (int64, error) {
 	}
 	return tag.RowsAffected(), nil
 }
+
+// EmbeddingDims reports the dimension the chunks.embedding column was declared
+// with, read from the catalog rather than assumed.
+//
+// pgvector stores the declared dimension in atttypmod. Checking it at startup
+// turns the single worst failure mode of this system into a refusal to start:
+// point cairns at a different embedding model and every stored vector becomes
+// incomparable with every new one, which produces a working-looking index full
+// of nonsense rather than an error.
+func (s *Store) EmbeddingDims(ctx context.Context) (int, error) {
+	var mod int
+	err := s.pool.QueryRow(ctx, `
+		SELECT a.atttypmod
+		FROM pg_attribute a
+		JOIN pg_class c ON c.oid = a.attrelid
+		WHERE c.relname = 'chunks' AND a.attname = 'embedding'`).Scan(&mod)
+	if err != nil {
+		return 0, err
+	}
+	return mod, nil
+}

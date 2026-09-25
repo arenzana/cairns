@@ -75,7 +75,8 @@ services:
       # Ollama is native on the host (no Metal in the Linux VM), reached over
       # the Docker gateway. Requires OLLAMA_HOST=0.0.0.0 on the host.
       OLLAMA_URL: http://host.docker.internal:11434
-      EMBED_MODEL: bge-m3
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      EMBED_DIMS: ${EMBED_DIMS:-}
       # The CONTAINER's view of the indexed directory. Indexing reads from here.
       FS_PATH: /data
       # Second source. Absent credentials means the source is skipped, not an
@@ -103,7 +104,8 @@ services:
     environment:
       DATABASE_URL: postgres://cairns:${POSTGRES_PASSWORD}@postgres:5432/cairns
       OLLAMA_URL: http://host.docker.internal:11434
-      EMBED_MODEL: bge-m3
+      EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
+      EMBED_DIMS: ${EMBED_DIMS:-}
       # The HOST's view of the directory, deliberately different from FS_PATH
       # above. Search returns locators for an agent running on the host to
       # open, so a container path like /data would be useless to it.

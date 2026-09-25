@@ -59,7 +59,8 @@ brew install ollama && ollama pull bge-m3
 launchctl setenv OLLAMA_HOST 0.0.0.0     # macOS; see below
 
 git clone https://github.com/arenzana/cairns && cd cairns
-cp .env.example .env    # set POSTGRES_PASSWORD and FS_HOST_PATH
+cp .env.example .env    # set POSTGRES_PASSWORD and FS_HOST_PATH; every
+                        # setting is documented inline there
 docker compose up -d
 ```
 
@@ -102,33 +103,30 @@ plugin that *is* configured and fails to build is fatal, because you meant it.
 
 ### Writing one
 
-Three methods. Copy `internal/source/twenty` and change where records come from.
+Three methods, about a hundred lines. **[docs/SOURCES.md](docs/SOURCES.md)** has
+the contract, a complete worked source you can copy, and the invariants that
+matter, each with what breaking it actually does to your index.
 
 ```go
-Name() string                              // goes in documents.source
+Name() string                              // goes in documents.source, prefixes every locator
 List(ctx) ([]source.Ref, error)            // id + the SOURCE's updated_at
 Fetch(ctx, Ref) (source.Doc, error)
 URI(Ref) string                            // a locator the agent can dereference
 ```
 
-Then `source.Register("yours", factory)` in an `init()` and add the blank
-import. Nothing in the indexer changes: it lists, diffs, fetches, chunks,
-embeds and reconciles identically for every source.
+Then `source.Register("yours", factory)` in an `init()` and one blank import.
+Nothing in the indexer changes.
 
-Two things decide whether a source works well:
+Prove it obeys the contract with one test:
 
-- **`Ref.UpdatedAt` must be the source's timestamp, never yours.** That one
-  field is what makes incremental indexing work the same for a file mtime, a
-  wiki `updatedAt` and a CRM record.
-- **Render records as prose, not JSON.** Ids, positions and cursors carry no
-  meaning and dilute the vector. Name first, a few meaningful fields, then the
-  free text unlabelled, because that is where the retrievable content is.
+```go
+func TestContract(t *testing.T) { sourcetest.Contract(t, mysource.New(...)) }
+```
 
-Reconciliation is by full listing rather than file watching. APIs have no
-inotify, and on macOS Docker's VirtioFS propagates CREATE and MODIFY but not
-DELETE ([docker/for-mac#7246](https://github.com/docker/for-mac/issues/7246)),
-so a watcher alone would leave chunks pointing at documents that no longer
-exist. Watch for latency, reconcile for correctness.
+`internal/source/sourcetest` checks what the signatures cannot: that `List` is
+idempotent, that `UpdatedAt` is the origin's own timestamp (a zero value quietly
+re-embeds your entire corpus every sweep), that `URI` is stable and prefixed,
+that `Fetch` errors on an unknown id instead of indexing an empty document.
 
 ## Measuring it
 

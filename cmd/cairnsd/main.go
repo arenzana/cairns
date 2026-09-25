@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -63,7 +64,21 @@ func main() {
 	}
 	defer st.Close()
 
-	emb := embed.New(env("OLLAMA_URL", "http://127.0.0.1:11434"), env("EMBED_MODEL", "bge-m3"), 1024)
+	// Dimensions come from the SCHEMA, not a constant. The embedding model and
+	// the column have to agree, and the column is the one holding 15,000
+	// vectors that cannot be reinterpreted.
+	dims, err := st.EmbeddingDims(ctx)
+	if err != nil {
+		log.Error("read embedding dimension", "err", err)
+		os.Exit(1)
+	}
+	if want := envInt("EMBED_DIMS", dims); want != dims {
+		log.Error("EMBED_DIMS disagrees with the schema",
+			"env", want, "schema", dims,
+			"hint", "ALTER TABLE chunks ALTER COLUMN embedding TYPE vector(N) and re-index with -reindex")
+		os.Exit(1)
+	}
+	emb := embed.New(env("OLLAMA_URL", "http://127.0.0.1:11434"), env("EMBED_MODEL", "bge-m3"), dims)
 	if err := emb.Ping(ctx); err != nil {
 		// Fail loudly at startup. An unreachable embedder otherwise shows up as
 		// a sweep that indexes nothing, which looks identical to "no changes".
@@ -346,6 +361,18 @@ func embedAll(ctx context.Context, emb *embed.Client, chunks []chunk.Chunk, titl
 		}
 	}
 	return out, nil
+}
+
+// envInt reads an optional integer setting, falling back to def when unset or
+// unparseable. A malformed value is treated as absent on purpose: this is used
+// for a cross-check that the schema already answers authoritatively.
+func envInt(k string, def int) int {
+	if v := os.Getenv(k); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			return n
+		}
+	}
+	return def
 }
 
 func env(k, def string) string {
