@@ -73,8 +73,10 @@ services:
     environment:
       DATABASE_URL: postgres://cairns:${POSTGRES_PASSWORD}@postgres:5432/cairns
       # Ollama is native on the host (no Metal in the Linux VM), reached over
-      # the Docker gateway. Requires OLLAMA_HOST=0.0.0.0 on the host.
-      OLLAMA_URL: http://host.docker.internal:11434
+      # the Docker gateway. Requires OLLAMA_HOST=0.0.0.0 on the host. Point
+      # OLLAMA_URL at another machine in .env (a GPU box on the tailnet, say)
+      # and none of that applies: the host runs no Ollama at all.
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       EMBED_DIMS: ${EMBED_DIMS:-}
       # The CONTAINER's view of the indexed directory. Indexing reads from here.
@@ -103,7 +105,9 @@ services:
         condition: service_healthy
     environment:
       DATABASE_URL: postgres://cairns:${POSTGRES_PASSWORD}@postgres:5432/cairns
-      OLLAMA_URL: http://host.docker.internal:11434
+      # Defaults to Ollama on this host, over the Docker gateway. Set OLLAMA_URL
+      # in .env to point at another machine (a GPU box on the tailnet, say).
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       EMBED_DIMS: ${EMBED_DIMS:-}
       # The HOST's view of the directory, deliberately different from FS_PATH
