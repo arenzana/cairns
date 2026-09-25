@@ -1,0 +1,7 @@
+.git
+bin/
+logs/
+backups/
+data/
+eval/run-*.json
+.env

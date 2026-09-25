@@ -1,0 +1,1055 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cairns</title>
+<link rel="icon" type="image/svg+xml" href="/logo.svg">
+<style>
+  /* Optional UI font, supplied at runtime via FONT_PATH and served from
+     /fonts/ui.woff2. Nothing is vendored: a licensed typeface is usually not
+     redistributable and this repository is public. When FONT_PATH is unset the
+     request 404s and the browser falls through the --sans stack below, which is
+     the entire fallback mechanism. */
+  @font-face{
+    font-family:"CairnsUI";
+    src:url("/fonts/ui.woff2") format("woff2");
+    font-weight:100 900;
+    font-style:normal;
+    font-display:swap;
+  }
+  :root{
+    --bg:#0E1418; --panel:#151E24; --line:#243039; --ink:#E3EBF1; --muted:#8A9AA8;
+    --teal:#53C7D2; --amber:#E5A24D; --ok:#6FCF97;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    /* Airport carries the display layer: headings, stat values, titles. The
+       mono keeps the technical layer, where a path or a distance is read
+       character by character and alignment is the point. */
+    --sans: "CairnsUI", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.55 var(--sans);
+    padding:22px 20px 60px;
+  }
+  .wrap{max-width:1600px; margin:0 auto}
+
+  header{display:flex; align-items:center; gap:11px; margin-bottom:18px; flex-wrap:wrap}
+  /* Inlined, not an <img>: an external SVG cannot inherit the page's CSS, so a
+     currentColor mark loaded through <img> would render in its own file-level
+     colour and vanish against this background. Inline it and one file serves
+     both the dark dashboard and the light browser tab. */
+  .logo{color:var(--teal); flex:none; display:block}
+  h1{
+    font:600 21px/1 var(--sans); margin:0; letter-spacing:.3em; text-transform:uppercase;
+    color:var(--teal);
+  }
+  header .sub{color:var(--muted); font-size:12.5px}
+
+  .stats{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(118px,1fr));
+    gap:1px; background:var(--line); border:1px solid var(--line);
+    border-radius:8px; overflow:hidden; margin-bottom:20px;
+  }
+  .stats div{background:var(--panel); padding:11px 13px}
+  .stats div.clickable{cursor:pointer}
+  .stats div.clickable:hover{background:#1A252C}
+  .stats div.clickable dt::after{content:" ▸"; color:var(--teal)}
+  .stats dt{
+    font:500 10px/1.4 var(--sans); letter-spacing:.14em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 3px;
+  }
+  /* The stat row is the one place the font gets to behave like signage. */
+  .stats dd{margin:0; font:500 23px/1.2 var(--sans); letter-spacing:.01em;
+            font-variant-numeric:tabular-nums}
+
+  .grid{display:grid; grid-template-columns:1fr 1fr; gap:16px}
+  @media (max-width:900px){ .grid{grid-template-columns:1fr} }
+
+  /* Search beside the map rather than above it. Stacked, a page of results
+     pushed the map entirely off screen, so the two halves could never inform
+     each other. */
+  .cols{display:grid; grid-template-columns:minmax(360px,440px) 1fr; gap:16px; align-items:start}
+  @media (max-width:1150px){ .cols{grid-template-columns:1fr} }
+  .col-search{position:sticky; top:14px; display:flex; flex-direction:column;
+              max-height:calc(100vh - 28px)}
+  #hits{overflow-y:auto; min-height:0; scrollbar-width:thin}
+  @media (max-width:1150px){ .col-search{position:static; max-height:none} }
+
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:14px 15px; min-width:0;
+  }
+  .panel h2{
+    font:500 10.5px/1 var(--sans); letter-spacing:.15em; text-transform:uppercase;
+    color:var(--muted); margin:0 0 12px;
+  }
+
+  form{display:flex; gap:8px; margin-bottom:12px}
+  input[type=search]{
+    flex:1; min-width:0; background:#0B1116; color:var(--ink);
+    border:1px solid var(--line); border-radius:6px; padding:9px 11px;
+    font:14px var(--mono);
+  }
+  input[type=search]:focus{outline:2px solid var(--teal); outline-offset:-1px}
+  button{
+    background:var(--teal); color:#07141a; border:0; border-radius:6px;
+    padding:9px 15px; font:600 13px var(--sans); letter-spacing:.03em; cursor:pointer;
+  }
+  button:disabled{opacity:.5; cursor:default}
+
+  .hit{padding:10px 8px 10px 9px; border-bottom:1px solid var(--line);
+       border-left:2px solid transparent; border-radius:0 5px 5px 0}
+  .hit:hover{background:#18232A}
+  .hit.sel{background:#18232A; border-left-color:var(--teal)}
+  a.open{color:inherit; text-decoration:none}
+  a.open:hover{color:var(--teal); text-decoration:underline; text-underline-offset:2px}
+  /* The affordance has to be visible without hovering, or nobody discovers a
+     result is openable at all. */
+  .hit .u a{color:#5B6C7A; text-decoration:none}
+  .hit .u a:hover{color:var(--teal)}
+  .hit .u .go{color:var(--teal); opacity:.8}
+  .hit:last-child{border-bottom:0}
+  .hit .top{display:flex; gap:10px; align-items:baseline; justify-content:space-between}
+  .hit .t{font:600 14.5px/1.35 var(--sans); color:var(--ink)}
+  .hit .d{font:11.5px var(--mono); color:var(--teal); font-variant-numeric:tabular-nums; flex:none}
+  .hit .h{font:11px var(--mono); color:var(--amber); margin-top:2px; overflow-wrap:anywhere}
+  .hit .s{color:var(--muted); font-size:12.5px; margin-top:5px}
+  .hit .u{font:10.5px var(--mono); color:#5B6C7A; margin-top:4px; overflow-wrap:anywhere}
+  .hit .rk{
+    display:inline-block; min-width:17px; font:11px var(--mono); color:var(--muted);
+    margin-right:7px;
+  }
+  .scores{display:flex; gap:9px; align-items:center; flex:none}
+  /* The fill sits UNDER the number, not behind it. As a background gradient
+     its hard stop landed mid-glyph and made "30%" unreadable, which is the one
+     thing the badge exists to say. */
+  .rel{
+    position:relative; font:11.5px var(--mono); font-weight:600; color:var(--ink);
+    background:#1D3037; padding:1px 6px 3px; border-radius:3px;
+  }
+  .rel::after{
+    content:""; position:absolute; left:0; bottom:0; height:2px;
+    width:var(--p); background:var(--teal); border-radius:0 0 3px 3px;
+  }
+  .up{color:var(--ok); font:11px var(--mono)}
+  .dn{color:var(--muted); font:11px var(--mono)}
+  .meta{
+    font:11px var(--mono); color:var(--muted); padding:0 0 10px;
+    border-bottom:1px solid var(--line); margin-bottom:4px;
+  }
+  /* Trace: where the time went, and which stage is responsible for what you
+     are looking at. */
+  .trace{
+    border:1px solid var(--line); border-radius:6px; padding:9px 10px;
+    margin:0 0 11px; background:#111A20;
+  }
+  .tbar{display:flex; height:5px; border-radius:3px; overflow:hidden; background:#0B1116; margin-bottom:8px}
+  .tbar i{display:block; min-width:1px}
+  .tst{display:flex; gap:8px; font:10.5px var(--mono); align-items:baseline; padding:1px 0}
+  .tst b{color:var(--ink); font-weight:500; min-width:84px; display:flex; align-items:center; gap:5px}
+  .tst b em{width:6px; height:6px; border-radius:2px; flex:none; font-style:normal}
+  .tst u{color:var(--teal); text-decoration:none; min-width:46px; text-align:right;
+         font-variant-numeric:tabular-nums}
+  .tst span{flex:1; color:var(--muted); overflow-wrap:anywhere}
+  .diag{
+    margin-top:9px; padding-top:8px; border-top:1px solid var(--line);
+    font-size:12.5px; line-height:1.5; color:var(--ink); max-width:70ch;
+  }
+  .diag.warn{color:var(--amber)}
+
+  .sib{margin-top:5px}
+  .sib summary{
+    cursor:pointer; font:10.5px var(--mono); color:var(--teal); list-style:none;
+    padding:1px 0; opacity:.85;
+  }
+  .sib summary::before{content:"▸ "}
+  .sib[open] summary::before{content:"▾ "}
+  .sib span{display:block; font:10.5px var(--mono); color:var(--muted);
+            padding:1px 0 1px 12px; overflow-wrap:anywhere}
+  .simbtn{
+    background:transparent; color:var(--muted); border:1px solid var(--line);
+    border-radius:4px; padding:1px 7px; font:10px var(--mono); cursor:pointer;
+    margin-left:8px; letter-spacing:0;
+  }
+  .simbtn:hover{color:var(--teal); border-color:var(--teal)}
+  .evalrow{display:flex; gap:10px; align-items:baseline; font:11.5px var(--mono);
+           padding:3px 0; border-top:1px solid var(--line)}
+  .evalrow .q{flex:1; color:var(--ink); overflow-wrap:anywhere}
+  .evalrow .ok{color:var(--ok)} .evalrow .miss{color:var(--amber)}
+
+  .nothing{
+    border-left:2px solid var(--amber); padding:8px 0 8px 14px; margin:10px 0;
+    font-size:13px; color:var(--muted); max-width:78ch;
+  }
+  .nothing b{display:block; color:var(--ink); font-size:14px; margin-bottom:3px}
+  .weak{margin-top:10px}
+  .weak summary{
+    cursor:pointer; font:11px var(--mono); color:var(--muted);
+    padding:6px 0; list-style:none;
+  }
+  .weak summary::before{content:"▸ "; color:var(--teal)}
+  .weak[open] summary::before{content:"▾ "}
+  .weak summary:hover{color:var(--ink)}
+  .weak .hit{opacity:.55}
+
+  table{width:100%; border-collapse:collapse; font-size:12.5px}
+  th{
+    text-align:left; font:500 10px var(--sans); letter-spacing:.13em;
+    text-transform:uppercase; color:var(--muted); padding:0 8px 7px 0; font-weight:400;
+  }
+  td{padding:5px 8px 5px 0; border-top:1px solid var(--line); vertical-align:top}
+  td.n{text-align:right; font-family:var(--mono); font-variant-numeric:tabular-nums; color:var(--muted)}
+  td.ago{font-family:var(--mono); color:var(--muted); white-space:nowrap}
+  .ttl{overflow-wrap:anywhere}
+
+  #mapwrap{position:relative}
+  canvas{width:100%; height:min(76vh, 760px); display:block; border-radius:6px; background:#0B1116; cursor:crosshair}
+  #tip{
+    position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+    background:#05090C; border:1px solid var(--teal); border-radius:5px;
+    padding:6px 9px; font:11.5px var(--mono); max-width:280px; z-index:5;
+  }
+  #tip b{color:var(--teal); font-weight:600}
+  #tip span{color:var(--muted)}
+  .legend{display:flex; flex-wrap:wrap; gap:9px; margin-top:10px}
+  .legend i{display:flex; align-items:center; gap:5px; font:11px var(--mono); color:var(--muted); font-style:normal}
+  .legend b{width:9px; height:9px; border-radius:2px; display:inline-block}
+  .empty{color:var(--muted); font-size:12.5px; padding:6px 0}
+  .kbd-hint{float:right; letter-spacing:0; text-transform:none; font-size:10px; opacity:.75}
+  kbd{background:#0B1116; border:1px solid var(--line); border-bottom-width:2px;
+      border-radius:3px; padding:0 4px; font:10px var(--mono); color:var(--ink)}
+  .ghost{
+    background:transparent; color:var(--muted); border:1px solid var(--line);
+    border-radius:5px; padding:3px 9px; font:11px var(--mono); cursor:pointer;
+  }
+  .ghost:hover{color:var(--ink); border-color:var(--teal)}
+  /* An id selector with display:flex outranks the user-agent's
+     [hidden]{display:none}, so the attribute silently stops working and the
+     modal is open on load. Restate it at matching specificity. */
+  #modal[hidden]{display:none}
+  #livebar[hidden]{display:none}
+  #modal{
+    position:fixed; inset:0; background:#05090Cd9; z-index:40;
+    display:flex; align-items:flex-start; justify-content:center; padding:48px 20px;
+    overflow-y:auto;
+  }
+  #modal .sheet{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:18px 20px; width:min(680px,100%);
+  }
+  #modal .sheethead{display:flex; justify-content:space-between; align-items:center; margin-bottom:14px}
+
+  #livebar{
+    background:var(--panel); border:1px solid var(--teal); border-radius:8px;
+    padding:10px 14px; margin-bottom:14px; font:12px var(--mono);
+    display:flex; gap:14px; align-items:center; flex-wrap:wrap;
+  }
+  #livebar.idle{border-color:var(--line)}
+  #livebar .dot{width:8px;height:8px;border-radius:50%;background:var(--teal);flex:none;
+                animation:pulse 1.1s ease-in-out infinite}
+  #livebar.idle .dot{background:var(--muted); animation:none}
+  #livebar.stale .dot{background:var(--amber); animation:none}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  @media (prefers-reduced-motion: reduce){ #livebar .dot{animation:none} }
+  #livebar .track{flex:1; min-width:120px; height:6px; background:#1B262D; border-radius:3px; overflow:hidden}
+  #livebar .fill{height:100%; background:var(--teal); transition:width .4s ease}
+  #livebar .k{color:var(--muted)}
+  #livebar .pc{font-variant-numeric:tabular-nums; min-width:34px; text-align:right}
+  #livebar .nw{color:var(--ok)} #livebar .up{color:var(--amber)}
+
+  #ov{
+    position:absolute; pointer-events:none; opacity:0; transition:opacity .12s;
+    background:#05090Cf2; border:1px solid var(--teal); border-radius:7px;
+    padding:11px 13px; font:11.5px var(--mono); width:310px; z-index:6;
+    max-height:390px; overflow:hidden; backdrop-filter:blur(3px);
+  }
+  #ov h4{margin:0 0 3px; font:600 12.5px var(--mono); color:var(--teal); overflow-wrap:anywhere}
+  #ov .sub{color:var(--muted); margin-bottom:8px}
+  #ov section{margin-top:8px; border-top:1px solid #1B262D; padding-top:6px}
+  #ov section b{display:block; color:var(--muted); font-weight:400; font-size:10px;
+                letter-spacing:.07em; text-transform:uppercase; margin-bottom:3px}
+  #ov li{list-style:none; display:flex; gap:7px; overflow:hidden; white-space:nowrap}
+  #ov li span{overflow:hidden; text-overflow:ellipsis}
+  #ov li i{color:var(--muted); font-style:normal; flex:none}
+  #ov .none{color:#4D5F6B}
+  .mapctl{display:flex; gap:14px; align-items:center; margin-bottom:9px; font:11px var(--mono); color:var(--muted)}
+  .mapctl label{display:flex; gap:5px; align-items:center; cursor:pointer}
+  .mapctl input[type=range]{width:80px; accent-color:var(--teal)}
+  .mapctl .hint{margin-left:auto; opacity:.6}
+  #varcap{font:10px var(--mono); color:var(--teal); text-transform:none; letter-spacing:0}
+  .bdsec{margin-bottom:14px}
+  .bdsec h3{font:400 10px var(--mono); letter-spacing:.08em; text-transform:uppercase;
+            color:var(--muted); margin:0 0 6px}
+  .bar{display:flex; align-items:center; gap:8px; margin-bottom:3px; font-size:12px}
+  .bar .nm{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .bar .track{width:96px; height:6px; background:#1B262D; border-radius:3px; overflow:hidden; flex:none}
+  .bar .fill{height:100%; background:var(--teal)}
+  .bar .ct{font:11px var(--mono); color:var(--muted); min-width:42px; text-align:right; flex:none}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="30" height="30" class="logo"
+         role="img" aria-label="cairns">
+      <!-- The mark: a cairn on a summit above a vector lattice. currentColor drives
+           everything but the gold arc, so the dashboard can recolour it for a dark
+           background by setting `color` while the favicon keeps the brand navy. -->
+      <g fill="none" stroke="currentColor" stroke-width="4.5">
+        <path d="M68.6 89.9 A44 44 0 1 1 68.6 10.1"/>
+      </g>
+      <g fill="none" stroke="#C29551" stroke-width="4.5" stroke-linecap="butt">
+        <path d="M68.6 10.1 A44 44 0 0 1 68.6 89.9"/>
+      </g>
+
+      <!-- Peak, two faces so the ridge reads at small sizes -->
+      <path d="M50 19 L41 34 L36 29 L28 45 L23 40 L18 61 L50 61 Z"
+            fill="currentColor" opacity=".78"/>
+      <path d="M50 19 L59 34 L64 29 L72 45 L77 40 L82 61 L50 61 Z"
+            fill="currentColor"/>
+
+      <!-- Lattice -->
+      <g stroke="currentColor" stroke-width="2.4" fill="none">
+        <path d="M50 45 L36 53 M50 45 L64 53 M50 45 L50 61
+                 M36 53 L24 60 M36 53 L50 61 M64 53 L76 60 M64 53 L50 61
+                 M24 60 L36 69 M36 69 L50 61 M76 60 L64 69 M64 69 L50 61"/>
+      </g>
+      <g fill="currentColor">
+        <circle cx="50" cy="45" r="4.2"/>
+        <circle cx="36" cy="53" r="4.2"/><circle cx="64" cy="53" r="4.2"/>
+        <circle cx="24" cy="60" r="4.2"/><circle cx="76" cy="60" r="4.2"/>
+        <circle cx="50" cy="61" r="4.2"/>
+        <circle cx="36" cy="69" r="4.2"/><circle cx="64" cy="69" r="4.2"/>
+      </g>
+    </svg>
+    <h1>cairns</h1>
+    <span class="sub" id="sub">loading…</span>
+  </header>
+
+  <div id="livebar" hidden></div>
+  <dl class="stats" id="stats"></dl>
+
+  <div class="cols">
+  <div class="panel col-search">
+    <h2>Ask the corpus <span class="kbd-hint">press <kbd>/</kbd></span></h2>
+    <form id="q">
+      <input type="search" id="qi" placeholder="e.g. how do I roll back a failed deploy"
+             autocomplete="off" spellcheck="false">
+      <button id="qb">Search</button>
+    </form>
+    <div id="hits"><div class="empty">Retrieve 40 candidates by vector, then judge each one with Jev. Ranked by relevance, not distance.</div></div>
+  </div>
+
+  <div class="panel col-map">
+    <h2>Vector map · documents in 3D (PCA) <span id="varcap"></span></h2>
+    <div class="mapctl">
+      <label><input type="checkbox" id="spin" checked> rotate</label>
+      <label>depth <input type="range" id="persp" min="0" max="100" value="55"></label>
+      <button type="button" id="reset" class="ghost">reset view</button>
+      <span class="hint">drag to turn · scroll to zoom · hover a node</span>
+    </div>
+    <div id="mapwrap">
+      <canvas id="map"></canvas>
+      <div id="tip"></div>
+      <div id="ov"></div>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+  </div>
+
+  <div class="panel" style="margin-top:16px">
+    <h2>Recently indexed</h2>
+    <table>
+      <thead><tr><th>Document</th><th style="text-align:right">Chunks</th><th>Indexed</th></tr></thead>
+      <tbody id="recent"></tbody>
+    </table>
+  </div>
+
+  <div id="modal" hidden>
+    <div class="sheet">
+      <div class="sheethead">
+        <h2 style="margin:0" id="modaltitle">Corpus breakdown</h2>
+        <button type="button" id="mclose" class="ghost">close</button>
+      </div>
+      <div id="modalbody"></div>
+      <div id="breakdown" hidden></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const fmt = n => n.toLocaleString();
+
+function ago(iso){
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 90) return Math.round(s) + "s";
+  if (s < 5400) return Math.round(s/60) + "m";
+  if (s < 172800) return Math.round(s/3600) + "h";
+  return Math.round(s/86400) + "d";
+}
+
+let EVAL = null;
+
+async function loadStats(){
+  const s = await (await fetch("/api/stats")).json();
+  // Retrieval quality belongs beside corpus size. Measuring it in a terminal
+  // you have to remember to open is how a regression survives a week.
+  try { EVAL = await (await fetch("/api/eval")).json(); } catch { EVAL = null; }
+
+  const cells = [
+    ["documents", fmt(s.documents), "statdocs", "Show corpus breakdown"],
+    ["chunks", fmt(s.chunks)],
+    ["sources", fmt(s.sources)],
+    ["median chunk", s.median_chunk_chars + " chars"],
+    ["db size", s.db_size],
+    ["last sweep", s.last_sweep ? ago(s.last_sweep) + " ago" : "never"],
+  ];
+  if (EVAL && EVAL.available){
+    cells.push(["retrieval",
+      `${(EVAL.recall*100).toFixed(0)}% <span style="color:var(--muted);font-size:14px">/ ${EVAL.mrr.toFixed(2)}</span>`,
+      "stateval", "recall / MRR from the last eval run"]);
+  }
+  $("#stats").innerHTML = cells.map(([k,v,id,title]) =>
+    `<div class="${id?"clickable":""}" ${id?`id="${id}" title="${title}"`:""}>
+       <dt>${k}</dt><dd>${v}</dd></div>`).join("");
+  const sd = $("#statdocs");
+  if (sd) sd.onclick = () => openModal("Corpus breakdown", $("#breakdown").innerHTML);
+  const se = $("#stateval");
+  if (se) se.onclick = () => openModal("Retrieval quality", evalHTML());
+  $("#sub").textContent = s.last_error ? "sweep error: " + s.last_error : "local retrieval over your corpus";
+  if (s.last_error) $("#sub").style.color = "var(--amber)";
+  renderBreakdown(s);
+}
+
+function openModal(title, html){
+  $("#modaltitle").textContent = title;
+  $("#modalbody").innerHTML = html;
+  $("#modal").hidden = false;
+}
+
+// The eval report, read from the newest run-*.json. It is a REPORT, not a
+// trigger: a run costs ~40s and real Jev tokens, so the page never starts one.
+function evalHTML(){
+  if (!EVAL || !EVAL.available) return `<div class="empty">no eval run found</div>`;
+  const cases = EVAL.cases || [];
+  const misses = cases.filter(c => !c.found);
+  return `
+    <div class="bdsec">
+      <div class="bar"><span class="nm">recall</span>
+        <span class="track"><span class="fill" style="width:${EVAL.recall*100}%"></span></span>
+        <span class="ct">${(EVAL.recall*100).toFixed(0)}%</span></div>
+      <div class="bar"><span class="nm">MRR</span>
+        <span class="track"><span class="fill" style="width:${EVAL.mrr*100}%"></span></span>
+        <span class="ct">${EVAL.mrr.toFixed(3)}</span></div>
+      <div class="bar"><span class="nm">reject violations</span>
+        <span class="ct" style="min-width:auto;color:${EVAL.reject_violations?"var(--amber)":"var(--ok)"}">${EVAL.reject_violations}</span></div>
+    </div>
+    <div class="diag" style="margin:0 0 14px">
+      ${cases.length} cases, ${misses.length} missed. From <b>${esc(EVAL.file||"")}</b>${EVAL.at?" at "+esc(EVAL.at):""}.
+      12 cases cannot resolve an MRR difference under ~0.05: one case is worth 0.042. Trust recall and violations.
+    </div>
+    <div class="bdsec"><h3>Cases</h3>
+      ${cases.map(c => `
+        <div class="evalrow">
+          <span class="${c.found?"ok":"miss"}">${c.found?"\u2713":"\u2717"}</span>
+          <span class="q">${esc(c.query)}</span>
+          <span style="color:var(--muted)">${c.found?`#${c.rank} \u00b7 ${(c.relevance*100).toFixed(0)}%`:"miss"}</span>
+          <span style="color:#5B6C7A">vec #${c.vector_rank||"-"}</span>
+        </div>`).join("")}
+    </div>`;
+}
+
+function bars(items, unit){
+  if (!items || !items.length) return `<div class="empty">none</div>`;
+  const max = Math.max(...items.map(i => i.count));
+  return items.map(i => `
+    <div class="bar">
+      <span class="nm">${esc(i.name)}</span>
+      <span class="track"><span class="fill" style="width:${(i.count/max*100).toFixed(1)}%"></span></span>
+      <span class="ct">${fmt(i.count)}${unit||""}</span>
+    </div>`).join("");
+}
+
+function renderBreakdown(s){
+  const src = (s.by_source||[]).map(x => `
+    <div class="bar">
+      <span class="nm">${esc(x.source)}</span>
+      <span class="ct" style="min-width:auto">${fmt(x.documents)} docs · ${fmt(x.chunks)} chunks</span>
+      <span class="ct">${x.last_sweep ? ago(x.last_sweep) : "never"}</span>
+    </div>`).join("") || `<div class="empty">no sources</div>`;
+  const hp = s.chunks ? (s.chunks_with_heading / s.chunks * 100).toFixed(1) : "0";
+  $("#breakdown").innerHTML = `
+    <div class="bdsec"><h3>Sources</h3>${src}</div>
+    <div class="bdsec"><h3>Documents by folder</h3>${bars(s.top_groups)}</div>
+    <div class="bdsec"><h3>Largest documents (chunks)</h3>${bars(s.biggest_docs)}</div>
+    <div class="bdsec"><h3>Chunk quality</h3>
+      <div class="bar"><span class="nm">carry a heading path</span>
+        <span class="track"><span class="fill" style="width:${hp}%"></span></span>
+        <span class="ct">${hp}%</span></div>
+      <div class="bar"><span class="nm">median size</span><span class="ct" style="min-width:auto">${s.median_chunk_chars} chars</span></div>
+    </div>`;
+}
+
+async function loadRecent(){
+  const r = await (await fetch("/api/recent")).json();
+  $("#recent").innerHTML = r.map(d => {
+    const t = d.open ? `<a class="open" href="${esc(d.open)}">${esc(d.title)}</a>` : esc(d.title);
+    return `
+    <tr>
+      <td class="ttl">${t}<br><span style="color:#5B6C7A;font-family:var(--mono);font-size:10.5px">${esc(d.uri)}</span></td>
+      <td class="n">${d.chunks}</td>
+      <td class="ago">${ago(d.indexed_at)}</td>
+    </tr>`;}).join("");
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// ---- search ----
+const HINT = `<div class="empty">Retrieve 40 candidates by vector, then judge each one with Jev. Ranked by relevance, not distance.</div>`;
+
+function clearResults(){
+  $("#hits").innerHTML = HINT;
+  $("#qb").disabled = false;
+  SEL = -1;
+  if (SEARCHHL){ SEARCHHL = null; if (MAP) drawMap(); }
+}
+
+// ---- keyboard: this is a tool you use daily, so it should not need a mouse ----
+let SEL = -1;
+const rows = () => [...document.querySelectorAll("#hits .hit")];
+
+function select(i){
+  const r = rows();
+  if (!r.length) return;
+  SEL = Math.max(0, Math.min(r.length - 1, i));
+  r.forEach((el, n) => el.classList.toggle("sel", n === SEL));
+  r[SEL].scrollIntoView({block:"nearest"});
+  // Moving the selection also moves the map: one result lit at a time shows
+  // where that single document sits, which the whole-result-set highlight cannot.
+  const uri = r[SEL].dataset.uri;
+  if (uri && MAP){ SEARCHHL = new Set([uri]); drawMap(); }
+}
+
+function openSelected(){
+  const r = rows();
+  if (SEL < 0 || !r[SEL]) return;
+  const href = r[SEL].dataset.open;
+  if (href) window.location.href = href;
+}
+
+document.addEventListener("keydown", e => {
+  const typing = /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if (e.key === "/" && !typing){ e.preventDefault(); $("#qi").focus(); $("#qi").select(); return; }
+  // Escape resets from anywhere: the box, a selected result, the map. Handled
+  // globally rather than on the input, because after a search focus has moved
+  // off the input and a key that works in one place but not the other is worse
+  // than one that does not exist.
+  if (e.key === "Escape"){
+    // One Escape does one thing. With the breakdown open it closes that and
+    // stops, so dismissing a modal never also throws away your results.
+    if (!$("#modal").hidden){ $("#modal").hidden = true; return; }
+    e.preventDefault();
+    $("#qi").value = "";
+    clearResults();
+    $("#qi").blur();
+    return;
+  }
+  // Escape and "/" are handled above; everything else typed into the box is
+  // text, except the arrows, which should still walk the results.
+  if (typing && !(e.key === "ArrowDown" || e.key === "ArrowUp")) return;
+  if (e.key === "j" || e.key === "ArrowDown"){ e.preventDefault(); select(SEL + 1); }
+  else if (e.key === "k" || e.key === "ArrowUp"){ e.preventDefault(); select(SEL - 1); }
+  else if (e.key === "Enter" && !typing){ e.preventDefault(); openSelected(); }
+});
+
+// The native clear button on input[type=search] fires a "search" event, and
+// also an "input" event with an empty value. Handle both: WebKit and Gecko do
+// not agree on which, and a clear that leaves stale results on screen reads as
+// a broken control.
+$("#qi").addEventListener("search", () => { if (!$("#qi").value.trim()) clearResults(); });
+$("#qi").addEventListener("input", () => { if (!$("#qi").value.trim()) clearResults(); });
+
+
+// Only strong hits light up. Lighting the judged-irrelevant ones too would say
+// "your answer is somewhere in this cloud" when the point of the threshold is
+// that it is not.
+function lightMap(hits){
+  SEARCHHL = hits.length ? new Set(hits.map(h => h.uri)) : null;
+  if (MAP) drawMap();
+}
+
+$("#q").addEventListener("submit", async e => {
+  e.preventDefault();
+  const q = $("#qi").value.trim();
+  if (!q){ clearResults(); return; }
+  $("#qb").disabled = true;
+  SEL = -1;
+  $("#hits").innerHTML = `<div class="empty">embedding query and searching\u2026</div>`;
+  try {
+    const r = await (await fetch("/api/search?q=" + encodeURIComponent(q))).json();
+    paintResults(r);
+  } catch (err) {
+    $("#hits").innerHTML = `<div class="empty">search failed: ${esc(err.message)}</div>`;
+  } finally {
+    $("#qb").disabled = false;
+    // Release the input once results are up. Leaving focus in the box meant a
+    // "j" went into the query instead of moving down the list, which makes the
+    // keyboard flow useless exactly when you want it. "/" takes it back.
+    $("#qi").blur();
+  }
+});
+
+// "More like this": same panel, same renderer, different question. Shares the
+// render path so a browse and a search cannot drift apart visually.
+async function showSimilar(uri, title){
+  SEL = -1;
+  $("#hits").innerHTML = `<div class="empty">finding documents similar to ${esc(title||uri)}\u2026</div>`;
+  try {
+    const r = await (await fetch("/api/similar?uri=" + encodeURIComponent(uri))).json();
+    paintResults(r);
+  } catch (err) {
+    $("#hits").innerHTML = `<div class="empty">similar failed: ${esc(err.message)}</div>`;
+  }
+}
+
+const THRESH = 0.25;
+const TCOL = ["#E5A24D","#53C7D2","#C77DFF"];
+
+function renderTrace(r){
+  const st = r.trace || [];
+  if (!st.length) return "";
+  const tot = st.reduce((a,x) => a + Math.max(x.ms,0), 0) || 1;
+  const bar = st.map((x,i) =>
+    `<i style="width:${(Math.max(x.ms,0)/tot*100).toFixed(2)}%;background:${TCOL[i%TCOL.length]}"></i>`).join("");
+  const rows = st.map((x,i) => `
+    <div class="tst">
+      <b><em style="background:${TCOL[i%TCOL.length]}"></em>${esc(x.name)}</b>
+      <u>${x.ms}ms</u><span>${esc(x.note||"")}</span>
+    </div>`).join("");
+  const warn = (r.judged && r.cleared === 0) ? " warn" : "";
+  const diag = r.diagnosis ? `<div class="diag${warn}">${esc(r.diagnosis)}</div>` : "";
+  return `<div class="trace"><div class="tbar">${bar}</div>${rows}${diag}</div>`;
+}
+
+function renderHit(h){
+  // Show the reordering, not just the outcome: if jev moved a result, say so.
+  const moved = h.vector_rank - h.rank;
+  const badge = moved > 0 ? `<span class="up">\u25b2${moved}</span>`
+              : moved < 0 ? `<span class="dn">\u25bc${-moved}</span>` : "";
+  const rel = h.relevance >= 0
+    ? `<span class="rel" style="--p:${Math.round(h.relevance*100)}%">${(h.relevance*100).toFixed(0)}%</span>`
+    : "";
+  const t = h.open ? `<a class="open" href="${esc(h.open)}">${esc(h.title)}</a>` : esc(h.title);
+  const u = h.open
+    ? `<a href="${esc(h.open)}">${esc(h.uri)}</a> <span class="go">\u2197 ${h.source === "twenty" ? "crm" : "obsidian"}</span>`
+    : esc(h.uri);
+  // "6 passages matched" says the document is ABOUT this, not that it mentions
+  // it once. DISTINCT ON keeps only the best passage, so without this the
+  // difference between the two is invisible.
+  const sib = h.passages > 1
+    ? `<details class="sib"><summary>${h.passages} passages in this document matched</summary>${
+        (h.others||[]).map(o => `<span>${esc(o)}</span>`).join("")}</details>`
+    : "";
+  return `
+  <div class="hit" data-uri="${esc(h.uri)}" data-open="${esc(h.open||"")}" data-title="${esc(h.title)}">
+    <div class="top">
+      <span class="t"><span class="rk">${h.rank}</span>${t} ${badge}</span>
+      <span class="scores">${rel}<span class="d">d ${h.distance.toFixed(3)}</span></span>
+    </div>
+    ${h.heading ? `<div class="h">${esc(h.heading)}</div>` : ""}
+    <div class="s">${esc(h.snippet)}</div>
+    ${sib}
+    <div class="u">${u}<button type="button" class="simbtn" data-uri="${esc(h.uri)}" data-title="${esc(h.title)}">similar</button></div>
+  </div>`;
+}
+
+function paintResults(r){
+  const hits = r.hits || [];
+  if (!hits.length){ $("#hits").innerHTML = `<div class="empty">no matches</div>`; lightMap([]); return; }
+
+  // Mirror what the MCP tool does. Below the threshold these are not weak
+  // answers, they are the least-bad of a candidate set that contained no
+  // answer at all, and listing them as results invites reading meaning into
+  // a 1% match. Unjudged (-1) is unknown, not irrelevant, so it stays.
+  const strong = hits.filter(h => h.relevance < 0 || h.relevance >= THRESH);
+  const weak   = hits.filter(h => h.relevance >= 0 && h.relevance < THRESH);
+  const bar = `<div class="meta">${r.candidates} candidates retrieved \u00b7 ` +
+    (r.judged ? `judged by jev (${fmt(r.jev_tokens)} tokens, ~$${(r.jev_tokens/1e6*0.042).toFixed(5)})`
+              : `<span style="color:var(--amber)">not judged</span>`) +
+    ` \u00b7 ${r.took_ms} ms</div>`;
+  const tr = renderTrace(r);
+
+  if (!strong.length){
+    $("#hits").innerHTML = bar + tr + `
+      <div class="nothing">
+        <b>Nothing in the corpus answers this.</b>
+        ${r.candidates} candidates were retrieved and judged; none reached ${THRESH*100}% relevance.
+        Treat the matches below as unrelated rather than as weak answers.
+      </div>
+      <details class="weak"><summary>show ${weak.length} judged-irrelevant candidates</summary>
+        ${weak.map(renderHit).join("")}
+      </details>`;
+    lightMap([]);
+    return;
+  }
+  $("#hits").innerHTML = bar + tr + strong.map(renderHit).join("") +
+    (weak.length ? `<details class="weak"><summary>show ${weak.length} below ${THRESH*100}%</summary>${weak.map(renderHit).join("")}</details>` : "");
+  lightMap(strong);
+}
+
+// One delegated handler for the results panel. Re-added after a refactor
+// dropped it: the "similar" button and click-to-select both live here, and
+// without it the mouse silently stopped agreeing with the keyboard.
+$("#hits").addEventListener("click", e => {
+  const sim = e.target.closest(".simbtn");
+  if (sim){
+    e.preventDefault(); e.stopPropagation();
+    showSimilar(sim.dataset.uri, sim.dataset.title);
+    return;
+  }
+  const row = e.target.closest(".hit");
+  if (!row) return;
+  const i = rows().indexOf(row);
+  if (i >= 0) select(i);   // does not preventDefault: a click on the link still opens it
+});
+
+// ---- vector map ----
+const PALETTE = ["#53C7D2","#E5A24D","#6FCF97","#C77DFF","#F2777A","#7FB3D5","#F0C674","#9DD9AB","#D98BC0","#8FA3B0"];
+let MAP = null, COLORS = {}, PLOT = [];
+
+async function loadMap(){
+  MAP = await (await fetch("/api/map")).json();
+  MAP.groups.forEach((g,i) => COLORS[g] = PALETTE[i % PALETTE.length]);
+  NORM = null;
+  if (MAP.var_pct) $("#varcap").textContent =
+    `· ${MAP.var_pct.map(v=>v.toFixed(1)+"%").join(" / ")} of variance`;
+  $("#legend").innerHTML = MAP.groups.map(g =>
+    `<i><b style="background:${COLORS[g]}"></b>${esc(g)}</i>`).join("");
+  drawMap();
+}
+
+let YAW = 0.6, PITCH = -0.25, NORM = null, ZOOM = 1, FIT = 1;
+// URIs the current search matched. Standing highlight: it survives rotation and
+// zoom so you can turn the cloud and see where your answers actually sit.
+let SEARCHHL = null;
+
+function normalise(){
+  const P = MAP.points;
+  const ex = a => { const v = P.map(a); const lo = Math.min(...v), hi = Math.max(...v);
+                    return {lo, span: (hi-lo)||1}; };
+  NORM = {x: ex(p=>p.x), y: ex(p=>p.y), z: ex(p=>p.z)};
+
+  // Fit on the cloud's RADIUS from the centroid, not its bounding box. The box
+  // changes shape as the model turns, so fitting to it would make the map
+  // breathe while rotating; the radius is rotation-invariant, so one factor
+  // fits at every angle.
+  // Fit to a high PERCENTILE radius, not the maximum. PCA projections of a
+  // real corpus are a dense core with a few far-flung outliers, and fitting to
+  // the furthest point shrinks the part you actually want to look at to a
+  // speck. The 98th percentile lets a couple of strays sit near the edge and
+  // gives the core the frame.
+  const radii = P.map(p => Math.hypot(n2(p.x,'x'), n2(p.y,'y'), n2(p.z,'z'))).sort((a,b)=>a-b);
+  const r98 = radii[Math.floor(radii.length * 0.98)] || radii[radii.length-1] || 1;
+  FIT = r98 > 0 ? 1 / r98 : 1;
+}
+const n2 = (v,a) => ((v - NORM[a].lo) / NORM[a].span - 0.5) * 2;
+
+function drawMap(){
+  const c = $("#map"), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  c.width = w * dpr; c.height = h * dpr;
+  const ctx = c.getContext("2d");
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  if (!MAP || !MAP.points.length) return;
+  if (!NORM) normalise();
+
+  const persp = +$("#persp").value / 100;
+  const cy = Math.cos(YAW), sy_ = Math.sin(YAW);
+  const cp = Math.cos(PITCH), sp = Math.sin(PITCH);
+  // Two-pass fit, measured rather than estimated. Project every point at unit
+  // scale first, take the 98th percentile of the resulting screen radius, then
+  // pick the scale that puts that radius on the frame edge.
+  //
+  // Guessing a constant does not work here: the weak-perspective factor below
+  // shrinks points by about a third at the centre and more with depth, so any
+  // fixed fudge is wrong at some rotation or depth setting. Measuring the
+  // actual output costs one extra pass over 1,391 points and is always right.
+  const proj = MAP.points.map(p => {
+    let X = n2(p.x,'x'), Y = n2(p.y,'y'), Z = n2(p.z,'z');
+    const x1 =  X*cy + Z*sy_;
+    const z1 = -X*sy_ + Z*cy;
+    const y2 =  Y*cp - z1*sp;
+    const z2 =  Y*sp + z1*cp;
+    const k = 1 / (1 + persp * 0.55 * (z2 + 1.6));
+    return {x: x1*k, y: y2*k, k, z2, p};
+  });
+  const radii = proj.map(q => Math.hypot(q.x, q.y)).sort((a,b)=>a-b);
+  const r98 = radii[Math.floor(radii.length * 0.98)] || radii[radii.length-1] || 1;
+  const scale = ((Math.min(w,h) / 2) - 10) / r98 * ZOOM;
+
+  const cx = w/2, cyc = h/2;
+
+  PLOT = proj.map(q => ({
+    X: cx + q.x * scale,
+    Y: cyc - q.y * scale,
+    r: Math.max(1.3, Math.min(9, (1.7 + Math.sqrt(q.p.chunks)*0.5) * q.k * 1.35)),
+    depth: q.z2,
+    alpha: Math.max(0.28, Math.min(1, 0.55 + 0.45*q.k)),
+    p: q.p
+  }));
+
+  // painter's algorithm: far points first so near ones overlap them
+  PLOT.sort((a,b) => a.depth - b.depth);
+
+  // The "bag": a soft translucent hull around the hovered node and everything
+  // related to it. A hull rather than lines on purpose — with six neighbours a
+  // line diagram becomes a starburst that obscures the cluster it is trying to
+  // describe, while an enclosing shape reads as "these belong together" and
+  // leaves the points visible underneath.
+  // Hover wins over a standing search highlight, so inspecting a neighbourhood
+  // never means losing your results. Only hover draws a bag: search matches are
+  // scattered across the whole cloud by design, and a hull around them would
+  // enclose the entire map and say nothing.
+  if (HL){
+    const members = PLOT.filter(q => HL.set.has(q.p.uri));
+    if (members.length >= 1) drawBag(ctx, members.map(q => [q.X, q.Y]));
+  }
+  const sel = HL ? HL.set : (SEARCHHL && SEARCHHL.size ? SEARCHHL : null);
+
+  for (const q of PLOT){
+    const on = sel ? sel.has(q.p.uri) : false;
+    ctx.beginPath(); ctx.arc(q.X, q.Y, q.r * (on ? 1.5 : 1), 0, Math.PI*2);
+    // Dim the rest rather than hide it: the surrounding cloud is the context
+    // that makes the selection legible.
+    ctx.globalAlpha = sel ? (on ? 1 : 0.1) : q.alpha;
+    ctx.fillStyle = COLORS[q.p.group] || "#7FB3D5";
+    ctx.fill();
+    if (on && HL && q.p.uri === HL.uri){
+      ctx.strokeStyle = "#E3EBF1"; ctx.lineWidth = 1.5; ctx.stroke();
+    }
+    // A halo on search hits. Colour alone cannot carry "this answered your
+    // question" when every node already wears a group colour, and a thin ring
+    // on a 2px dot in a 2,000-point cloud is invisible: the marker has to be
+    // much larger than the node so the eye finds it without hunting.
+    if (on && !HL){
+      ctx.globalAlpha = 1;
+      const R = Math.max(9, q.r * 3);
+      const g = ctx.createRadialGradient(q.X, q.Y, 0, q.X, q.Y, R * 1.9);
+      g.addColorStop(0, "rgba(227,235,241,0.34)");
+      g.addColorStop(1, "rgba(227,235,241,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath(); ctx.arc(q.X, q.Y, R * 1.9, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle = "#E3EBF1"; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(q.X, q.Y, R, 0, Math.PI*2); ctx.stroke();
+    }
+  }
+  ctx.globalAlpha = 1;
+}
+
+// convexHull: Andrew's monotone chain.
+function convexHull(pts){
+  if (pts.length < 3) return pts.slice();
+  const p = pts.slice().sort((a,b) => a[0]-b[0] || a[1]-b[1]);
+  const cross = (o,a,b) => (a[0]-o[0])*(b[1]-o[1]) - (a[1]-o[1])*(b[0]-o[0]);
+  const lo = [];
+  for (const q of p){ while (lo.length>=2 && cross(lo[lo.length-2],lo[lo.length-1],q)<=0) lo.pop(); lo.push(q); }
+  const up = [];
+  for (let i=p.length-1;i>=0;i--){ const q=p[i];
+    while (up.length>=2 && cross(up[up.length-2],up[up.length-1],q)<=0) up.pop(); up.push(q); }
+  lo.pop(); up.pop();
+  return lo.concat(up);
+}
+
+function drawBag(ctx, pts){
+  const cx = pts.reduce((s,p)=>s+p[0],0)/pts.length;
+  const cy = pts.reduce((s,p)=>s+p[1],0)/pts.length;
+  const PAD = 26;
+
+  let hull = convexHull(pts);
+  if (hull.length < 3){
+    // One or two members: a hull is degenerate, so draw a capsule around them.
+    const r = (hull.length === 2 ? Math.hypot(hull[0][0]-hull[1][0], hull[0][1]-hull[1][1])/2 : 0) + PAD;
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+  } else {
+    // Push each vertex outward from the centroid, then round the corners with
+    // quadratic segments through the midpoints so the shape reads as a soft
+    // bag rather than a polygon.
+    const out = hull.map(([x,y]) => {
+      const d = Math.hypot(x-cx, y-cy) || 1;
+      return [x + (x-cx)/d*PAD, y + (y-cy)/d*PAD];
+    });
+    const mid = (a,b) => [(a[0]+b[0])/2, (a[1]+b[1])/2];
+    ctx.beginPath();
+    let m = mid(out[out.length-1], out[0]);
+    ctx.moveTo(m[0], m[1]);
+    for (let i=0;i<out.length;i++){
+      const nxt = mid(out[i], out[(i+1)%out.length]);
+      ctx.quadraticCurveTo(out[i][0], out[i][1], nxt[0], nxt[1]);
+    }
+    ctx.closePath();
+  }
+  ctx.save();
+  ctx.globalAlpha = 1;
+  ctx.fillStyle = "rgba(83,199,210,0.09)";
+  ctx.fill();
+  ctx.strokeStyle = "rgba(83,199,210,0.38)";
+  ctx.setLineDash([5,4]);
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
+  ctx.restore();
+}
+
+function spinLoop(){
+  if ($("#spin").checked && MAP){ YAW += 0.0022; drawMap(); }
+  requestAnimationFrame(spinLoop);
+}
+requestAnimationFrame(spinLoop);
+
+let dragging = false, lastX = 0, lastY = 0;
+$("#map").addEventListener("mousedown", e => { dragging = true; lastX = e.clientX; lastY = e.clientY; });
+window.addEventListener("mouseup", () => dragging = false);
+window.addEventListener("mousemove", e => {
+  if (!dragging) return;
+  YAW   += (e.clientX - lastX) * 0.006;
+  PITCH += (e.clientY - lastY) * 0.006;
+  PITCH = Math.max(-1.3, Math.min(1.3, PITCH));
+  lastX = e.clientX; lastY = e.clientY;
+  drawMap();
+});
+$("#persp").addEventListener("input", drawMap);
+
+$("#map").addEventListener("wheel", e => {
+  e.preventDefault();
+  ZOOM *= Math.exp(-e.deltaY * 0.0015);
+  ZOOM = Math.max(0.4, Math.min(14, ZOOM));
+  drawMap();
+}, {passive:false});
+
+const ov = $("#ov");
+let hoverURI = null, hoverSeq = 0, hoverTimer = null;
+let HL = null;   // {uri, set:Set<uri>} — the bag currently drawn
+
+function nlist(items, fmtRight){
+  if (!items || !items.length) return `<li class="none">none</li>`;
+  return items.slice(0,5).map(n =>
+    `<li><span>${esc(n.title)}</span>${fmtRight ? `<i>${fmtRight(n)}</i>` : ""}</li>`).join("");
+}
+
+async function showOverlay(pt, mx, my, rect){
+  ov.style.left = Math.min(mx + 16, Math.max(0, rect.width - 322)) + "px";
+  ov.style.top  = Math.min(my + 16, Math.max(0, rect.height - 200)) + "px";
+  ov.style.opacity = 1;
+  // Draw what we already know immediately, then fill in relationships when
+  // they arrive: waiting on a round trip makes hover feel broken.
+  ov.innerHTML = `<h4>${esc(pt.p.title)}</h4>
+    <div class="sub">${esc(pt.p.group)} · ${pt.p.chunks} chunks</div>
+    <div class="sub">loading relationships…</div>`;
+
+  const seq = ++hoverSeq;
+  let d;
+  try { d = await (await fetch("/api/node?uri=" + encodeURIComponent(pt.p.uri))).json(); }
+  catch { return; }
+  if (seq !== hoverSeq) return;   // pointer moved on; discard stale response
+
+  const set = new Set([d.uri]);
+  for (const n of d.nearest)   set.add(n.uri);
+  for (const n of d.links_out) if (n.uri) set.add(n.uri);
+  for (const n of d.links_in)  if (n.uri) set.add(n.uri);
+  HL = {uri: d.uri, set};
+  drawMap();
+
+  ov.innerHTML = `
+    <h4>${esc(d.title)}</h4>
+    <div class="sub">${esc(d.group)} · ${d.chunks} chunks · updated ${ago(d.updated_at)} ago</div>
+    <section><b>nearest in meaning</b>${nlist(d.nearest, n => n.distance.toFixed(3))}</section>
+    <section><b>links out (${d.links_out.length})</b>${nlist(d.links_out)}</section>
+    <section><b>links in (${d.links_in.length})</b>${nlist(d.links_in)}</section>
+    ${d.unresolved.length ? `<section><b>unwritten links</b>${
+      d.unresolved.slice(0,4).map(t=>`<li class="none"><span>${esc(t)}</span></li>`).join("")}</section>` : ""}`;
+}
+
+$("#map").addEventListener("mousemove", e => {
+  if (dragging) return;
+  const rect = e.target.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  let best = null, bd = 16*16;
+  for (const pt of PLOT){
+    const d = (pt.X-mx)**2 + (pt.Y-my)**2;
+    if (d < bd){ bd = d; best = pt; }
+  }
+  if (!best){
+    if (HL){ HL = null; drawMap(); }
+    hoverURI = null; ov.style.opacity = 0;
+    clearTimeout(hoverTimer);
+    return;
+  }
+  if (best.p.uri === hoverURI) return;
+  hoverURI = best.p.uri;
+  clearTimeout(hoverTimer);
+  // Debounce: sweeping the pointer across a dense cluster would otherwise fire
+  // a query per pixel.
+  hoverTimer = setTimeout(() => showOverlay(best, mx, my, rect), 110);
+});
+$("#map").addEventListener("mouseleave", () => {
+  ov.style.opacity = 0; hoverURI = null;
+  if (HL){ HL = null; drawMap(); }
+});
+window.addEventListener("resize", drawMap);
+
+let WAS_RUNNING = false;
+async function loadStatus(){
+  let rows = [];
+  try { rows = await (await fetch("/api/status")).json(); } catch { return; }
+  const bar = $("#livebar");
+  const live = rows.find(r => r.running);
+  const stale = rows.find(r => r.stale);
+  if (!live && !stale){
+    // Keep the last completed sweep visible rather than blanking the bar:
+    // "nothing is happening" and "nothing has ever happened" look identical
+    // otherwise.
+    const last = rows[0];
+    bar.hidden = !last;
+    if (last){
+      bar.className = "idle";
+      const touched = last.new + last.updated;
+      bar.innerHTML = `<span class="dot"></span><span class="k">idle</span>
+        <span class="k">last sweep ${ago(last.updated_at)} ago ·
+        ${fmt(last.total)} docs · ${touched ? fmt(touched)+" changed" : "nothing changed"}</span>`;
+    }
+    // A sweep that just finished changed the index: refresh what depends on it.
+    if (WAS_RUNNING){ WAS_RUNNING = false; loadStats(); loadRecent(); loadMap(); }
+    return;
+  }
+  if (stale && !live){
+    bar.hidden = false; bar.className = "stale";
+    bar.innerHTML = `<span class="dot"></span><span class="k">indexer stopped mid-sweep</span>
+      <span>${esc(stale.source)}</span><span class="k">last update ${ago(stale.updated_at)} ago</span>`;
+    return;
+  }
+  WAS_RUNNING = true;
+  const pct = live.total ? (live.done / live.total * 100) : 0;
+  bar.hidden = false; bar.className = "";
+  const touched = live.new + live.updated;
+  bar.innerHTML = `<span class="dot"></span><span>indexing ${esc(live.source)}</span>
+    <span class="track"><span class="fill" style="width:${pct.toFixed(1)}%"></span></span>
+    <span class="pc">${pct.toFixed(0)}%</span>
+    <span class="k">${fmt(live.done)}/${fmt(live.total)}</span>
+    ${touched ? `<span class="nw">${fmt(touched)} re-embedded</span>` : `<span class="k">no changes yet</span>`}
+    ${live.failed ? `<span style="color:#F2777A">${live.failed} failed</span>` : ""}`;
+}
+
+$("#mclose").onclick = () => { $("#modal").hidden = true; };
+$("#modal").addEventListener("click", e => { if (e.target.id === "modal") $("#modal").hidden = true; });
+$("#reset").onclick = () => { YAW = 0.6; PITCH = -0.25; ZOOM = 1; HL = null; drawMap(); };
+
+loadStats(); loadRecent(); loadMap(); loadStatus();
+setInterval(loadStatus, 1000);
+setInterval(() => { loadStats(); loadRecent(); }, 15000);
+</script>
+</body>
+</html>

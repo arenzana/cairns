@@ -1,0 +1,20 @@
+# Secrets and machine-local config
+.env
+.op.env
+
+# Build output
+bin/
+*.test
+
+# Runtime state that is not source
+backups/
+logs/
+
+# Your corpus leaks through these, so they stay local:
+# labels are the questions you ask your own notes, and a run records the
+# titles and paths that answered them. Ship the .example instead.
+eval/labels.json
+eval/run-*.json
+
+# The bundled UI font is OFL and ships with the repo. If you swap in a font you
+# may not redistribute, add it here. See fonts/README.md.

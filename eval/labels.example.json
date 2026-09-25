@@ -1,0 +1,38 @@
+{
+  "_comment": [
+    "Labelled evaluation set. Copy to labels.json and replace with questions",
+    "you already know the answer to in YOUR corpus.",
+    "",
+    "This is the only way to tell whether a change to the chunker, the",
+    "embedding model or the rerank instruction made retrieval better or merely",
+    "different. Eyeballing a result list cannot: it looks plausible either way.",
+    "",
+    "expect_any: the case PASSES if any of these URIs appears in the results.",
+    "reject:     URIs that must NOT outrank the expected one. This is the",
+    "            harder half. Surfacing the right note is easy; refusing the",
+    "            plausible wrong one is where retrieval is actually won.",
+    "",
+    "URIs are what search returns: 'fs:relative/path.md' for files,",
+    "'twenty:person/<id>' for CRM records.",
+    "",
+    "Keep it small and real. Twelve questions you actually asked beat a",
+    "hundred invented ones, but note that a set this size cannot resolve an",
+    "MRR difference under about 0.05: one case is worth 1/12 of the metric."
+  ],
+  "cases": [
+    {
+      "query": "how do I roll back a failed deployment",
+      "expect_any": ["fs:runbooks/deployments.md"],
+      "reject": ["fs:runbooks/first-time-setup.md"]
+    },
+    {
+      "query": "what did we decide about the pricing model",
+      "expect_any": ["fs:meetings/2026-03-11-pricing.md", "fs:decisions/pricing.md"]
+    },
+    {
+      "query": "which vendor did we rule out and why",
+      "expect_any": ["fs:procurement/vendor-shortlist.md"],
+      "reject": ["fs:procurement/rfp-template.md"]
+    }
+  ]
+}
