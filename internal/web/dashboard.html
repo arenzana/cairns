@@ -287,6 +287,61 @@
   .bar .track{width:96px; height:6px; background:#1B262D; border-radius:3px; overflow:hidden; flex:none}
   .bar .fill{height:100%; background:var(--teal)}
   .bar .ct{font:11px var(--mono); color:var(--muted); min-width:42px; text-align:right; flex:none}
+  /* ---- phones and small tablets ----------------------------------------
+     The page is usable at 1512px by default; this makes it usable at 390px.
+     The guiding choice: on a phone you came to ASK something, so search moves
+     above the map and the map shrinks to a glanceable band rather than owning
+     the screen. */
+  @media (max-width: 760px){
+    body{padding:14px 12px 40px}
+    h1{font:600 17px/1 var(--sans); letter-spacing:.22em}
+    header{gap:9px; margin-bottom:14px}
+    /* Redundant once the logo and wordmark are there, and it costs a line. */
+    header .sub{display:none}
+    /* There is no "/" key to press. */
+    .kbd-hint{display:none}
+
+    .stats{grid-template-columns:repeat(2,1fr)}
+    .stats dd{font-size:19px}
+    .stats div{padding:9px 11px}
+
+    /* Search first. order is on the MAP so the search panel keeps source order
+       and stays the first thing a screen reader reaches. */
+    .cols{gap:12px}
+    .col-map{order:2}
+    canvas{height:46vh; cursor:grab}
+    .mapctl{flex-wrap:wrap; gap:10px 14px}
+    /* "drag to turn - scroll to zoom - hover a node" describes a mouse. */
+    .mapctl .hint{display:none}
+
+    /* Score and distance under the title rather than squeezed beside it. */
+    .hit .top{flex-direction:column; align-items:flex-start; gap:3px}
+    .hit .scores{align-self:flex-start}
+    /* Comfortable tap targets. */
+    .simbtn{padding:5px 11px; margin-left:0; margin-top:6px; display:inline-block}
+    .weak summary, .sib summary{padding:9px 0}
+    button{padding:11px 15px}
+    input[type=search]{padding:11px}
+
+    /* Hover-only surfaces have no meaning on a touch screen. */
+    #tip{display:none}
+    #ov{width:min(300px, calc(100vw - 40px)); max-height:60vh}
+
+    #modal{padding:16px 10px}
+    #modal .sheet{padding:14px 13px}
+    table{font-size:12px}
+    .trace{padding:8px}
+    .tst{flex-wrap:wrap}
+    .tst span{flex-basis:100%; padding-left:92px}
+  }
+
+  /* Very narrow: one stat per row reads better than two cramped ones. */
+  @media (max-width: 380px){
+    .stats{grid-template-columns:1fr 1fr}
+    .stats dd{font-size:17px}
+    .tst span{padding-left:0}
+  }
+
 </style>
 </head>
 <body>
@@ -972,15 +1027,22 @@ async function showOverlay(pt, mx, my, rect){
       d.unresolved.slice(0,4).map(t=>`<li class="none"><span>${esc(t)}</span></li>`).join("")}</section>` : ""}`;
 }
 
-$("#map").addEventListener("mousemove", e => {
-  if (dragging) return;
-  const rect = e.target.getBoundingClientRect();
-  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-  let best = null, bd = 16*16;
+// Nearest plotted node to a point in canvas space, or null. Shared by hover and
+// by tap: a touch screen has no hover, so a tap has to do that job.
+function pickNode(mx, my, slack){
+  let best = null, bd = slack*slack;
   for (const pt of PLOT){
     const d = (pt.X-mx)**2 + (pt.Y-my)**2;
     if (d < bd){ bd = d; best = pt; }
   }
+  return best;
+}
+
+$("#map").addEventListener("mousemove", e => {
+  if (dragging) return;
+  const rect = e.target.getBoundingClientRect();
+  const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+  const best = pickNode(mx, my, 16);
   if (!best){
     if (HL){ HL = null; drawMap(); }
     hoverURI = null; ov.style.opacity = 0;
@@ -999,6 +1061,59 @@ $("#map").addEventListener("mouseleave", () => {
   if (HL){ HL = null; drawMap(); }
 });
 window.addEventListener("resize", drawMap);
+
+// ---- touch ----------------------------------------------------------------
+// The map is the one part of this page a mouse-only binding makes unusable: no
+// drag, no wheel, no hover. One finger turns, two pinch, a tap opens the
+// overlay that hovering gives a mouse.
+//
+// preventDefault only inside a recognised gesture, so a tap still registers and
+// the page still scrolls normally when the finger starts anywhere else.
+let touchMode = null, pinchStart = 0, zoomStart = 1, tapStart = null;
+const pinchDist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+
+$("#map").addEventListener("touchstart", e => {
+  if (e.touches.length === 1){
+    touchMode = "rotate";
+    lastX = e.touches[0].clientX; lastY = e.touches[0].clientY;
+    tapStart = {x: lastX, y: lastY, t: Date.now()};
+  } else if (e.touches.length === 2){
+    touchMode = "pinch";
+    pinchStart = pinchDist(e.touches);
+    zoomStart = ZOOM;
+    tapStart = null;              // a second finger means this was never a tap
+  }
+}, {passive:true});
+
+$("#map").addEventListener("touchmove", e => {
+  if (touchMode === "rotate" && e.touches.length === 1){
+    e.preventDefault();
+    const t = e.touches[0];
+    YAW   += (t.clientX - lastX) * 0.006;
+    PITCH += (t.clientY - lastY) * 0.006;
+    PITCH = Math.max(-1.3, Math.min(1.3, PITCH));
+    lastX = t.clientX; lastY = t.clientY;
+    // Past a few pixels of travel this is a drag, not a tap.
+    if (tapStart && Math.hypot(t.clientX - tapStart.x, t.clientY - tapStart.y) > 10) tapStart = null;
+    drawMap();
+  } else if (touchMode === "pinch" && e.touches.length === 2 && pinchStart > 0){
+    e.preventDefault();
+    ZOOM = Math.max(0.4, Math.min(14, zoomStart * pinchDist(e.touches) / pinchStart));
+    drawMap();
+  }
+}, {passive:false});
+
+$("#map").addEventListener("touchend", () => {
+  if (tapStart && Date.now() - tapStart.t < 400){
+    const rect = $("#map").getBoundingClientRect();
+    const mx = tapStart.x - rect.left, my = tapStart.y - rect.top;
+    // Bigger slack than the mouse: a fingertip is not a pixel.
+    const best = pickNode(mx, my, 26);
+    if (best) showOverlay(best, mx, my, rect);
+    else { ov.style.opacity = 0; hoverURI = null; if (HL){ HL = null; drawMap(); } }
+  }
+  touchMode = null; tapStart = null;
+}, {passive:true});
 
 let WAS_RUNNING = false;
 async function loadStatus(){

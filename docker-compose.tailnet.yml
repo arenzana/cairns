@@ -1,0 +1,24 @@
+# Optional: also serve the dashboard and MCP endpoint on this machine's Tailscale
+# address, so you can reach it from a phone.
+#
+# Opt in from .env, which keeps the everyday command unchanged:
+#
+#   TAILNET_IP=100.x.y.z
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.tailnet.yml
+#
+# This ADDS a binding; the loopback one in the base file stays, so a locally
+# registered MCP client keeps working.
+#
+# Bound to the tailnet address specifically, never 0.0.0.0: this machine also has
+# a LAN address, and the dashboard has NO AUTHENTICATION. Anything that can reach
+# the port can read the entire indexed corpus.
+#
+# Tailscale is a private network, not an authenticated one. Every device on the
+# tailnet can reach this, including devices belonging to other accounts you have
+# shared it with. If that is not what you want, restrict it with a Tailscale ACL
+# before setting TAILNET_IP. Do NOT put this behind Tailscale Funnel, which
+# publishes to the open internet.
+services:
+  cairns-serve:
+    ports:
+      - "${TAILNET_IP:?set TAILNET_IP in .env to this machine's tailscale address}:8765:8765"

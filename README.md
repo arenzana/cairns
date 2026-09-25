@@ -115,6 +115,30 @@ neither binds `0.0.0.0` nor needs a firewall rule to let its own containers
 back in. A single query embeds in about 70ms on it; a full index would take
 hours, which is why it is a fallback and not the default.
 
+### Reaching it from a phone
+
+By default everything binds to loopback. To reach the dashboard over your
+Tailscale network, set both in `.env`:
+
+```sh
+TAILNET_IP=100.x.y.z                                        # this machine's tailscale address
+COMPOSE_FILE=docker-compose.yml:docker-compose.tailnet.yml
+```
+
+This *adds* a binding, so a locally registered MCP client keeps working on
+`127.0.0.1`. The UI is responsive: below 760px the columns stack with search
+above the map, the map shrinks to a glanceable band, and the canvas takes one
+finger to turn, two to pinch-zoom and a tap to open a node, since a touch screen
+has no hover and no wheel.
+
+> [!WARNING]
+> **The dashboard has no authentication.** Anything that can reach the port can
+> read your entire indexed corpus. Tailscale is a private network, not an
+> authenticated one, so every device on your tailnet can reach it, including
+> devices belonging to accounts you have shared it with. Restrict it with a
+> Tailscale ACL if that is not what you want, and never put it behind Tailscale
+> Funnel, which publishes to the open internet.
+
 ### Choosing where embedding runs
 
 Embedding is the only part that wants real hardware. Name embedders in
