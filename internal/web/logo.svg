@@ -3,30 +3,29 @@
   <!-- The mark: a cairn on a summit above a vector lattice. currentColor drives
        everything but the gold arc, so the dashboard can recolour it for a dark
        background by setting `color` while the favicon keeps the brand navy. -->
-  <g fill="none" stroke="currentColor" stroke-width="4.5">
-    <path d="M68.6 89.9 A44 44 0 1 1 68.6 10.1"/>
-  </g>
-  <g fill="none" stroke="#C29551" stroke-width="4.5" stroke-linecap="butt">
-    <path d="M68.6 10.1 A44 44 0 0 1 68.6 89.9"/>
+  <g fill="none" stroke-width="5">
+    <path d="M70.5 88.6 A44 44 0 1 1 70.5 11.4" stroke="currentColor"/>
+    <path d="M70.5 11.4 A44 44 0 0 1 70.5 88.6" stroke="#C29551"/>
   </g>
 
-  <!-- Peak, two faces so the ridge reads at small sizes -->
-  <path d="M50 19 L41 34 L36 29 L28 45 L23 40 L18 61 L50 61 Z"
-        fill="currentColor" opacity=".78"/>
-  <path d="M50 19 L59 34 L64 29 L72 45 L77 40 L82 61 L50 61 Z"
+  <!-- Peak. Two faces so the ridge reads at favicon size; the left is lifted in
+       opacity rather than given its own colour, so recolouring stays one knob. -->
+  <path d="M50 19 L39 38 L34 32 L26 47 L22 43 L18 59 L50 59 Z"
+        fill="currentColor" opacity=".58"/>
+  <path d="M50 19 L61 35 L67 29 L74 43 L79 39 L84 59 L50 59 Z"
         fill="currentColor"/>
 
-  <!-- Lattice -->
-  <g stroke="currentColor" stroke-width="2.4" fill="none">
-    <path d="M50 45 L36 53 M50 45 L64 53 M50 45 L50 61
-             M36 53 L24 60 M36 53 L50 61 M64 53 L76 60 M64 53 L50 61
-             M24 60 L36 69 M36 69 L50 61 M76 60 L64 69 M64 69 L50 61"/>
+  <!-- Lattice, in the open ground below the slopes where it stays legible -->
+  <g stroke="currentColor" stroke-width="1.8" fill="none">
+    <path d="M50 57 L39 63 M50 57 L61 63 M50 57 L50 70
+             M39 63 L29 68 M39 63 L50 70 M61 63 L71 68 M61 63 L50 70
+             M29 68 L39 76 M39 76 L50 70 M71 68 L61 76 M61 76 L50 70"/>
   </g>
   <g fill="currentColor">
-    <circle cx="50" cy="45" r="4.2"/>
-    <circle cx="36" cy="53" r="4.2"/><circle cx="64" cy="53" r="4.2"/>
-    <circle cx="24" cy="60" r="4.2"/><circle cx="76" cy="60" r="4.2"/>
-    <circle cx="50" cy="61" r="4.2"/>
-    <circle cx="36" cy="69" r="4.2"/><circle cx="64" cy="69" r="4.2"/>
+    <circle cx="50" cy="57" r="3.2"/>
+    <circle cx="39" cy="63" r="3.2"/><circle cx="61" cy="63" r="3.2"/>
+    <circle cx="29" cy="68" r="3.2"/><circle cx="71" cy="68" r="3.2"/>
+    <circle cx="50" cy="70" r="3.2"/>
+    <circle cx="39" cy="76" r="3.2"/><circle cx="61" cy="76" r="3.2"/>
   </g>
 </svg>
