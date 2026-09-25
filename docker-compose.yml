@@ -61,6 +61,30 @@ services:
       retries: 12
       start_period: 10s
 
+  # An embedder of last resort, for a machine whose own GPU cannot serve one.
+  #
+  # Off by default, because on a machine with a usable GPU the right answer is
+  # still a native Ollama: this one is CPU-only and roughly an order of
+  # magnitude slower. It exists so that search survives the configured embedder
+  # being a laptop or a desktop that sleeps. Start it with:
+  #
+  #     docker compose --profile local-embed up -d
+  #     docker compose exec ollama ollama pull bge-m3
+  #
+  # then point OLLAMA_FALLBACK_URL at http://ollama:11434 in .env.
+  #
+  # It publishes no ports on purpose. Reachable only from this compose network,
+  # it needs neither an OLLAMA_HOST=0.0.0.0 bind on the host nor a firewall rule
+  # to let containers back in, which is what a host-native Ollama costs on Linux.
+  ollama:
+    image: ollama/ollama:0.34.4
+    container_name: cairns-ollama
+    restart: unless-stopped
+    profiles: ["local-embed"]
+    volumes:
+      # Models are a gigabyte-plus each; keep them across recreates.
+      - ollamamodels:/root/.ollama
+
   cairnsd:
     build: .
     image: cairns:local
@@ -77,6 +101,8 @@ services:
       # OLLAMA_URL at another machine in .env (a GPU box on the tailnet, say)
       # and none of that applies: the host runs no Ollama at all.
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Used only while OLLAMA_URL is unreachable. See the ollama service above.
+      OLLAMA_FALLBACK_URL: ${OLLAMA_FALLBACK_URL:-}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       EMBED_DIMS: ${EMBED_DIMS:-}
       # The CONTAINER's view of the indexed directory. Indexing reads from here.
@@ -108,6 +134,8 @@ services:
       # Defaults to Ollama on this host, over the Docker gateway. Set OLLAMA_URL
       # in .env to point at another machine (a GPU box on the tailnet, say).
       OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
+      # Used only while OLLAMA_URL is unreachable. See the ollama service above.
+      OLLAMA_FALLBACK_URL: ${OLLAMA_FALLBACK_URL:-}
       EMBED_MODEL: ${EMBED_MODEL:-bge-m3}
       EMBED_DIMS: ${EMBED_DIMS:-}
       # The HOST's view of the directory, deliberately different from FS_PATH
@@ -144,3 +172,5 @@ services:
 volumes:
   pgdata:
     name: cairns-pgdata
+  ollamamodels:
+    name: cairns-ollama-models

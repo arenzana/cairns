@@ -86,6 +86,35 @@ so a containerised Ollama falls back to CPU and turns a 15-minute index into
 hours. On macOS `brew services restart ollama` regenerates the launch agent and
 drops `OLLAMA_HOST`; use `launchctl kickstart -k gui/$UID/sh.brew.ollama`.
 
+### Embedding somewhere else
+
+`OLLAMA_URL` can point at another machine, which is what makes cairns usable on
+a laptop with no GPU worth the name: embed on the desktop over the tailnet
+instead of spending hours on the CPU. Use the address, not the hostname, since
+a container does not share the host's MagicDNS.
+
+That machine sleeps, though, and search is useless without an embedder. So
+`OLLAMA_FALLBACK_URL` names a second one, used only while the first is
+unreachable, detected in five seconds and retried every minute. Unset, there is
+no fallback and nothing changes. The trace names the endpoint that answered and
+says plainly when it is the fallback, because the latency difference otherwise
+has no visible cause.
+
+For a host that cannot serve a native Ollama without opening a port to its own
+containers, the compose file carries a CPU one, off unless asked for:
+
+```sh
+docker compose --profile local-embed up -d
+docker compose exec ollama ollama pull bge-m3
+echo 'OLLAMA_FALLBACK_URL=http://ollama:11434' >> .env
+docker compose up -d --force-recreate cairnsd cairns-serve
+```
+
+It publishes no ports: reachable only from the compose network, so the host
+neither binds `0.0.0.0` nor needs a firewall rule to let its own containers
+back in. A single query embeds in about 70ms on it; a full index would take
+hours, which is why it is a fallback and not the default.
+
 ### Register it with an agent
 
 ```sh

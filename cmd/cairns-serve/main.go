@@ -54,7 +54,12 @@ func main() {
 			"hint", "ALTER TABLE chunks ALTER COLUMN embedding TYPE vector(N) and re-index with -reindex")
 		os.Exit(1)
 	}
-	emb := embed.New(env("OLLAMA_URL", "http://127.0.0.1:11434"), env("EMBED_MODEL", "bge-m3"), dims)
+	// OLLAMA_FALLBACK_URL keeps search alive when the configured embedder
+	// is a machine that sleeps. Unset, there is no fallback and behaviour
+	// is exactly as before.
+	emb := embed.NewFailover(
+		[]string{env("OLLAMA_URL", "http://127.0.0.1:11434"), os.Getenv("OLLAMA_FALLBACK_URL")},
+		env("EMBED_MODEL", "bge-m3"), dims)
 	if err := emb.Ping(ctx); err != nil {
 		// The query box is useless without an embedder, and failing at startup
 		// beats a dashboard whose search silently 500s.

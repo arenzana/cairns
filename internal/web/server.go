@@ -670,7 +670,8 @@ func (s *Server) search(ctx context.Context, q string, limit int) (SearchResult,
 	qv := pgvector.NewVector(vecs[0])
 	trace = append(trace, Stage{
 		Name: "embed query", MS: time.Since(t0).Milliseconds(),
-		Note: fmt.Sprintf("%s, %d dims, on the host GPU", s.emb.Model(), len(vecs[0])),
+		Note: fmt.Sprintf("%s, %d dims, on %s%s", s.emb.Model(), len(vecs[0]), s.emb.Endpoint(),
+			map[bool]string{true: " (FALLBACK: the configured embedder is unreachable)"}[s.emb.OnFallback()]),
 	})
 	t0 = time.Now()
 
