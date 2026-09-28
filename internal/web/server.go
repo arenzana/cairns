@@ -49,6 +49,9 @@ type Server struct {
 	// evalDir holds the JSON written by cairns-eval. Read-only, and absent in a
 	// deployment that never runs the harness.
 	evalDir string
+	// activity is a small in-memory window onto searches as they happen. Most
+	// traffic arrives over MCP from an agent, which is otherwise invisible.
+	activity activity
 	// fontPath is an optional .woff2 for the dashboard UI font. Supplied at
 	// RUNTIME, never vendored: a typeface you have a licence for is usually not
 	// a typeface you may redistribute, and this repository is public.
@@ -96,6 +99,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/node", s.handleNode)
 	mux.HandleFunc("GET /api/similar", s.handleSimilar)
 	mux.HandleFunc("GET /api/eval", s.handleEval)
+	mux.HandleFunc("GET /api/activity", s.handleActivity)
 	mux.HandleFunc("POST /mcp", s.handleMCP)
 	return mux
 }
@@ -648,7 +652,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
+	id := s.activity.begin(q, "dashboard")
 	res, err := s.search(ctx, q, resultN)
+	s.activity.end(id, res, err)
 	if err != nil {
 		httpErr(w, err)
 		return

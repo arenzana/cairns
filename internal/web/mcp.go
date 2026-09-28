@@ -136,7 +136,12 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 
 		ctx, cancel := contextWithTimeout(r, 90*time.Second)
 		defer cancel()
-		res, err := s.search(ctx, strings.TrimSpace(p.Arguments.Query), limit)
+		qtext := strings.TrimSpace(p.Arguments.Query)
+		// Record it: MCP is where most traffic comes from, and it is the
+		// surface with no window onto it.
+		actID := s.activity.begin(qtext, "mcp")
+		res, err := s.search(ctx, qtext, limit)
+		s.activity.end(actID, res, err)
 		if err != nil {
 			// Tool errors belong in the result with isError, not as a protocol
 			// error: the model should see what failed and be able to react.

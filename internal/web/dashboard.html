@@ -179,6 +179,37 @@
   .evalrow .q{flex:1; color:var(--ink); overflow-wrap:anywhere}
   .evalrow .ok{color:var(--ok)} .evalrow .miss{color:var(--amber)}
 
+  /* live query activity */
+  .actrow{
+    display:flex; gap:10px; align-items:baseline; padding:8px 0;
+    border-bottom:1px solid var(--line);
+  }
+  .actrow:last-child{border-bottom:0}
+  .actrow .dot{
+    width:7px; height:7px; border-radius:50%; flex:none; margin-top:5px;
+    background:var(--muted);
+  }
+  .actrow.live .dot{background:var(--teal); animation:pulse 1.1s ease-in-out infinite}
+  .actrow.empty .dot{background:var(--amber)}
+  .actrow.err .dot{background:#F2777A}
+  .actrow .body{flex:1; min-width:0}
+  .actrow .q{overflow-wrap:anywhere; font-size:13.5px}
+  .actrow .sub{
+    font:10.5px var(--mono); color:var(--muted); margin-top:2px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .actrow .sub b{color:var(--teal); font-weight:500}
+  .actrow .rt{
+    font:10.5px var(--mono); color:var(--muted); flex:none; text-align:right;
+    font-variant-numeric:tabular-nums;
+  }
+  .surf{
+    font:9.5px var(--mono); letter-spacing:.08em; text-transform:uppercase;
+    padding:2px 5px; border-radius:2px; flex:none; margin-top:2px;
+  }
+  .surf.mcp{background:#22323A; color:var(--teal)}
+  .surf.dashboard{background:#2A2620; color:var(--amber)}
+
   .nothing{
     border-left:2px solid var(--amber); padding:8px 0 8px 14px; margin:10px 0;
     font-size:13px; color:var(--muted); max-width:78ch;
@@ -414,12 +445,19 @@
   </div>
   </div>
 
-  <div class="panel" style="margin-top:16px">
+  <div class="cols" style="margin-top:16px">
+  <div class="panel col-search" style="position:static; max-height:none">
+    <h2>Live queries <span class="kbd-hint" id="actmeta"></span></h2>
+    <div id="activity"><div class="empty">No searches yet. Agent traffic over MCP shows up here too.</div></div>
+  </div>
+
+  <div class="panel">
     <h2>Recently indexed</h2>
     <table>
       <thead><tr><th>Document</th><th style="text-align:right">Chunks</th><th>Indexed</th></tr></thead>
       <tbody id="recent"></tbody>
     </table>
+  </div>
   </div>
 
   <div id="modal" hidden>
@@ -654,6 +692,7 @@ $("#q").addEventListener("submit", async e => {
     // "j" went into the query instead of moving down the list, which makes the
     // keyboard flow useless exactly when you want it. "/" takes it back.
     $("#qi").blur();
+    loadActivity();
   }
 });
 
@@ -770,6 +809,57 @@ $("#hits").addEventListener("click", e => {
   const i = rows().indexOf(row);
   if (i >= 0) select(i);   // does not preventDefault: a click on the link still opens it
 });
+
+
+// ---- live query activity -------------------------------------------------
+// Most searches here arrive over MCP from an agent, so without this the busiest
+// user of the system is invisible: you cannot see what was asked, whether it
+// found anything, or what it cost.
+async function loadActivity(){
+  let d;
+  try { d = await (await fetch("/api/activity")).json(); } catch { return; }
+  const qs = d.queries || [];
+
+  $("#actmeta").textContent = qs.length
+    ? `${d.running ? d.running + " running · " : ""}${d.avg_ms}ms avg · ${fmt(d.jev_tokens)} tokens`
+    : "";
+
+  if (!qs.length){
+    $("#activity").innerHTML = `<div class="empty">No searches yet. Agent traffic over MCP shows up here too.</div>`;
+    return;
+  }
+
+  $("#activity").innerHTML = qs.map(q => {
+    // Three states worth telling apart at a glance: still running, finished
+    // with an answer, finished with nothing above the threshold. The third is
+    // not a failure, but it is the one you want to notice.
+    let cls = "", sub;
+    if (q.running){
+      cls = "live";
+      sub = `<b>searching…</b>`;
+    } else if (q.err){
+      cls = "err";
+      sub = `failed: ${esc(q.err)}`;
+    } else if (q.cleared > 0){
+      sub = `<b>${(q.top_rel*100).toFixed(0)}%</b> ${esc(q.top_title||"")}`;
+    } else {
+      cls = "empty";
+      sub = `nothing cleared ${THRESH*100}% of ${q.candidates} candidates`;
+    }
+    const right = q.running ? "" :
+      `${q.ms}ms${q.cleared !== undefined && !q.err ? ` · ${q.cleared}/${q.candidates}` : ""}`;
+    return `
+      <div class="actrow ${cls}">
+        <span class="dot"></span>
+        <span class="surf ${esc(q.surface)}">${esc(q.surface)}</span>
+        <span class="body">
+          <div class="q">${esc(q.text)}</div>
+          <div class="sub">${sub}</div>
+        </span>
+        <span class="rt">${right}<br><span style="opacity:.6">${ago(q.started_at)}</span></span>
+      </div>`;
+  }).join("");
+}
 
 // ---- vector map ----
 const PALETTE = ["#53C7D2","#E5A24D","#6FCF97","#C77DFF","#F2777A","#7FB3D5","#F0C674","#9DD9AB","#D98BC0","#8FA3B0"];
@@ -1161,8 +1251,11 @@ $("#mclose").onclick = () => { $("#modal").hidden = true; };
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") $("#modal").hidden = true; });
 $("#reset").onclick = () => { YAW = 0.6; PITCH = -0.25; ZOOM = 1; HL = null; drawMap(); };
 
-loadStats(); loadRecent(); loadMap(); loadStatus();
+loadStats(); loadRecent(); loadMap(); loadStatus(); loadActivity();
 setInterval(loadStatus, 1000);
+// 2s: a search takes ~1.5s, so anything slower and a running query is only
+// ever seen after it has already finished.
+setInterval(loadActivity, 2000);
 setInterval(() => { loadStats(); loadRecent(); }, 15000);
 </script>
 </body>
