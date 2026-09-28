@@ -25,6 +25,12 @@ const (
 	overlapWords = 50
 	// Below this a chunk is almost always a stub heading with no content, and
 	// embedding it just adds noise to the index.
+	//
+	// It filters chunks WITHIN a document, never documents. A short document
+	// whose every section falls under this produced no chunks at all and was
+	// therefore never stored: measured on one corpus, 187 of 1,584 files
+	// vanished this way, including every person note, and nothing reported it.
+	// See the fallback at the end of Split.
 	minWords = 12
 )
 
@@ -135,6 +141,18 @@ func Split(body string) []Chunk {
 		buf = append(buf, line)
 	}
 	flush()
+
+	// A document that produced nothing is not noise, it is a short document.
+	// Emitting it whole is right: minWords exists to stop a stub heading inside
+	// a long note from diluting the index, and a note that IS short embeds
+	// perfectly well as one chunk, especially once EmbedText prefixes its
+	// title. Without this the document is silently absent from the index and no
+	// count anywhere goes down.
+	if len(out) == 0 {
+		if text := strings.TrimSpace(body); text != "" {
+			out = append(out, Chunk{Ordinal: 0, Body: text})
+		}
+	}
 
 	return out
 }
