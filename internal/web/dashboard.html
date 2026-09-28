@@ -193,7 +193,13 @@
   .actrow.empty .dot{background:var(--amber)}
   .actrow.err .dot{background:#F2777A}
   .actrow .body{flex:1; min-width:0}
-  .actrow .q{overflow-wrap:anywhere; font-size:13.5px}
+  .actrow .q{
+    overflow-wrap:anywhere; font-size:13.5px; text-align:left;
+    background:transparent; border:0; padding:0; margin:0; cursor:pointer;
+    color:var(--ink); font-family:inherit; line-height:inherit; width:100%;
+  }
+  .actrow .q:hover{color:var(--teal); text-decoration:underline; text-underline-offset:2px}
+  .actrow .q:focus-visible{outline:2px solid var(--teal); outline-offset:2px; border-radius:2px}
   .actrow .sub{
     font:10.5px var(--mono); color:var(--muted); margin-top:2px;
     overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
@@ -917,13 +923,28 @@ async function loadActivity(){
         <span class="dot"></span>
         <span class="surf ${esc(q.surface)}">${esc(q.surface)}</span>
         <span class="body">
-          <div class="q">${esc(q.text)}</div>
+          <button type="button" class="q" data-q="${esc(q.text)}" title="Run this search again">${esc(q.text)}</button>
           <div class="sub">${sub}</div>
         </span>
         <span class="rt">${right}<br><span style="opacity:.6">${ago(q.started_at)}</span></span>
       </div>`;
   }).join("");
 }
+
+// Re-run a search from the activity feed. The feed is mostly agent traffic, so
+// this is the fastest way to see what an agent actually got back: click the
+// question and the dashboard asks it again.
+$("#activity").addEventListener("click", e => {
+  const b = e.target.closest("button.q");
+  if (!b) return;
+  const q = b.dataset.q;
+  if (!q) return;
+  $("#qi").value = q;
+  $("#q").dispatchEvent(new Event("submit", {cancelable:true}));
+  // The feed sits below the search panel, so on a narrow screen the results
+  // would otherwise appear off screen above the click.
+  $(".col-search").scrollIntoView({behavior:"smooth", block:"start"});
+});
 
 // ---- vector map ----
 const PALETTE = ["#53C7D2","#E5A24D","#6FCF97","#C77DFF","#F2777A","#7FB3D5","#F0C674","#9DD9AB","#D98BC0","#8FA3B0"];

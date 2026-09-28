@@ -276,6 +276,10 @@ Three states are distinguished because they mean different things: still
 running, finished with an answer, and finished with **nothing above the
 threshold**. The third is not a failure, but it is the one worth noticing.
 
+**Click a question to run it again.** Since the feed is mostly agent traffic,
+that is the fastest way to see what an agent actually got back for something it
+asked on its own.
+
 Results carry thumbs. A vote is **not a ranking input**, it is an eval label:
 up becomes `expect_any`, down becomes `reject`. A handful of votes cannot steer
 a model without overfitting to those exact votes, but they can build the golden
