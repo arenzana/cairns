@@ -132,10 +132,23 @@ faking a backend: a fake only proves the fake obeys the contract. See
 
 ## Things that decide whether it works well
 
-**Keep `List` cheap relative to the source.** It runs every sweep. But cheap is
-relative: if the API returns complete records in its list response, cache them
-and serve `Fetch` from that cache rather than making hundreds of round trips to
-re-request what you already have. Twenty does exactly this.
+**Keep `List` cheap relative to the source, and measure which way that cuts.**
+It runs every sweep, so where the bytes move matters. Two opposite answers are
+both correct, and the payload decides which:
+
+- *Cheap list response:* cache the records in `List` and serve `Fetch` from that
+  cache, rather than hundreds of round trips re-requesting what you already
+  have. **Twenty** does this.
+- *Expensive list response:* ask for only the fields a `Ref` needs and let
+  `Fetch` pull the body for what changed. **Paperless** returns every document's
+  full OCR text by default, measured at 1,002 KB per page of 100 against 8 KB
+  with `fields=id,title,modified`. Caching that meant a sweep which found
+  nothing changed still cost ~5 MB, about 1.4 GB a day at a five-minute
+  interval, to learn nothing. It now lists cheaply and fetches only what moved,
+  which on a steady sweep is nothing at all.
+
+Getting this backwards does not fail, it just quietly costs. Look at the
+payload.
 
 **Never let one bad entry abort a listing.** An empty list means *delete
 everything*. One unreadable file must not look identical to an empty source.
