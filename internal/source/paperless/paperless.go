@@ -39,12 +39,8 @@ type Paperless struct {
 	http *http.Client
 
 	mu sync.Mutex
-	// cache holds what List fetched. The list endpoint returns each document's
-	// full OCR content, so re-requesting them one at a time in Fetch would be
-	// hundreds of round trips for bytes already in hand.
-	cache map[string]doc
 	// names resolves correspondent, type and tag ids. An id in the body would
-	// embed as a meaningless integer.
+	// embed as a meaningless integer. Small, and refreshed once per sweep.
 	names map[string]map[int]string
 }
 
@@ -71,10 +67,9 @@ func New(baseURL, token string) *Paperless {
 		baseURL = "https://" + baseURL
 	}
 	return &Paperless{
-		base:  strings.TrimRight(baseURL, "/"),
-		tok:   token,
-		http:  &http.Client{Timeout: 90 * time.Second},
-		cache: map[string]doc{},
+		base: strings.TrimRight(baseURL, "/"),
+		tok:  token,
+		http: &http.Client{Timeout: 90 * time.Second},
 	}
 }
 
@@ -92,9 +87,16 @@ func (p *Paperless) List(ctx context.Context) ([]source.Ref, error) {
 		names[key] = m
 	}
 
-	fresh := map[string]doc{}
 	var refs []source.Ref
-	next := p.base + "/api/documents/?page_size=100&ordering=id"
+	// Ask for ONLY the fields a Ref needs. The default response carries every
+	// document's full OCR text: measured here, 1,002 KB per page of 100 against
+	// 8 KB with field selection, so a sweep that finds nothing changed cost
+	// ~5 MB. At a five-minute interval that is ~1.4 GB a day to learn nothing.
+	//
+	// This is the opposite choice from the Twenty source, and deliberately.
+	// Caching content in List is right when the list response is cheap; here it
+	// broke the rule that List stay cheap RELATIVE to the source.
+	next := p.base + "/api/documents/?page_size=100&ordering=id&fields=id,title,modified,added,created"
 	for next != "" {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -108,7 +110,6 @@ func (p *Paperless) List(ctx context.Context) ([]source.Ref, error) {
 		}
 		for _, d := range page.Results {
 			id := strconv.Itoa(d.ID)
-			fresh[id] = d
 			title := strings.TrimSpace(d.Title)
 			if title == "" {
 				title = "Document " + id
@@ -123,18 +124,22 @@ func (p *Paperless) List(ctx context.Context) ([]source.Ref, error) {
 	}
 
 	p.mu.Lock()
-	p.cache, p.names = fresh, names
+	p.names = names
 	p.mu.Unlock()
 	return refs, nil
 }
 
-func (p *Paperless) Fetch(_ context.Context, r source.Ref) (source.Doc, error) {
+// Fetch pulls the one document, including its OCR text. Called only for
+// documents whose timestamp or content hash actually moved, so on a steady
+// sweep it is called zero times.
+func (p *Paperless) Fetch(ctx context.Context, r source.Ref) (source.Doc, error) {
 	p.mu.Lock()
-	d, ok := p.cache[r.ExternalID]
 	names := p.names
 	p.mu.Unlock()
-	if !ok {
-		return source.Doc{}, fmt.Errorf("paperless: %s not in the last listing", r.ExternalID)
+
+	var d doc
+	if err := p.get(ctx, p.base+"/api/documents/"+r.ExternalID+"/", &d); err != nil {
+		return source.Doc{}, fmt.Errorf("paperless: fetch %s: %w", r.ExternalID, err)
 	}
 	return source.Doc{Ref: r, Body: render(d, names)}, nil
 }
