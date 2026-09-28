@@ -109,9 +109,10 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		var p struct {
 			Name      string `json:"name"`
 			Arguments struct {
-				Query        string  `json:"query"`
-				Limit        int     `json:"limit"`
-				MinRelevance float64 `json:"min_relevance"`
+				Query        string   `json:"query"`
+				Limit        int      `json:"limit"`
+				MinRelevance float64  `json:"min_relevance"`
+				Sources      []string `json:"sources"`
 			} `json:"arguments"`
 		}
 		if err := json.Unmarshal(req.Params, &p); err != nil {
@@ -140,7 +141,7 @@ func (s *Server) handleMCP(w http.ResponseWriter, r *http.Request) {
 		// Record it: MCP is where most traffic comes from, and it is the
 		// surface with no window onto it.
 		actID := s.activity.begin(qtext, "mcp")
-		res, err := s.search(ctx, qtext, limit)
+		res, err := s.search(ctx, qtext, limit, p.Arguments.Sources)
 		s.activity.end(actID, res, err)
 		if err != nil {
 			// Tool errors belong in the result with isError, not as a protocol
@@ -215,6 +216,9 @@ func (s *Server) renderHits(res SearchResult, minRel float64) string {
 func (s *Server) resolve(uri string) string {
 	if rest, ok := strings.CutPrefix(uri, "fs:"); ok && s.fsRoot != "" {
 		return filepath.Join(s.fsRoot, rest)
+	}
+	if rest, ok := strings.CutPrefix(uri, "bible:"); ok && s.bibleRoot != "" {
+		return filepath.Join(s.bibleRoot, rest)
 	}
 	if rest, ok := strings.CutPrefix(uri, "twenty:"); ok && s.twentyURL != "" {
 		return twenty.WebURL(s.twentyURL, rest)

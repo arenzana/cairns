@@ -114,6 +114,9 @@ services:
       EMBED_DIMS: ${EMBED_DIMS:-}
       # The CONTAINER's view of the indexed directory. Indexing reads from here.
       FS_PATH: /data
+      # Optional second corpus, indexed as its own source so it can be filtered
+      # in or out. See scripts/usx2md.py.
+      BIBLE_PATH: ${BIBLE_HOST_PATH:+/bible}
       # Second source. Absent credentials means the source is skipped, not an
       # error, so cairns still runs with just the filesystem source.
       TWENTY_BASE_URL: ${TWENTY_BASE_URL:-}
@@ -122,6 +125,7 @@ services:
       - "host.docker.internal:host-gateway"
     volumes:
       - "${FS_HOST_PATH:?set FS_HOST_PATH in .env}:/data:ro"
+      - "${BIBLE_HOST_PATH:-/dev/null}:/bible:ro"
 
   cairns-serve:
     build: .
@@ -158,6 +162,7 @@ services:
       FS_HOST_PATH: ${FS_HOST_PATH}
       # Optional: an Obsidian vault NAME turns results into obsidian:// links.
       OBSIDIAN_VAULT: ${OBSIDIAN_VAULT:-}
+      BIBLE_HOST_PATH: ${BIBLE_HOST_PATH:-}
       # Injected at `docker compose up` time, e.g. by running compose under
       # `op run`. Note it is then stored in the container config so a restart
       # after reboot works without 1Password being unlocked.

@@ -181,7 +181,19 @@ import (
 | source | default | configured by |
 |---|---|---|
 | `fs` | **on** | `FS_HOST_PATH`, optional `OBSIDIAN_VAULT` for `obsidian://` links |
+| `bible` | off | `BIBLE_HOST_PATH`, a corpus converted by `scripts/usx2md.py` |
 | `twenty` | off | `TWENTY_BASE_URL` + `TWENTY_API_KEY` |
+
+Search can be restricted: `sources: ["bible"]` on the MCP tool, `?sources=fs` on
+the API. The filter is applied **inside** the candidate query, which makes it a
+pre-filter. Post-filtering would search the whole index and then discard,
+silently returning fewer candidates the narrower your filter gets.
+
+`bible` is the filesystem source under another name, which is the cheapest way
+to add one. The rename is the feature: scripture answers a different kind of
+question from your own writing, and at a few thousand sections it is large
+enough that without a separate name a search about grace would return the text
+alongside the notes written about it, and the notes would lose.
 
 An unconfigured plugin is skipped and named in the startup log, never fatal. A
 plugin that *is* configured and fails to build is fatal, because you meant it.

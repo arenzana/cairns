@@ -32,6 +32,7 @@ import (
 	// Sources register themselves in init(), the way database/sql drivers do.
 	// The filesystem source is the default and always present. Everything below
 	// it is a plugin: delete the line and that source leaves the binary.
+	_ "github.com/arenzana/cairns/internal/source/bible"
 	_ "github.com/arenzana/cairns/internal/source/fs"
 	_ "github.com/arenzana/cairns/internal/source/twenty"
 )

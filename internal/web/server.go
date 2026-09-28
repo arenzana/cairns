@@ -49,6 +49,8 @@ type Server struct {
 	// evalDir holds the JSON written by cairns-eval. Read-only, and absent in a
 	// deployment that never runs the harness.
 	evalDir string
+	// bibleRoot resolves a bible: locator, the HOST path.
+	bibleRoot string
 	// activity is a small in-memory window onto searches as they happen. Most
 	// traffic arrives over MCP from an agent, which is otherwise invisible.
 	activity activity
@@ -73,6 +75,7 @@ func New(pool *pgxpool.Pool, emb *cembed.Client, jv *jev.Client, fsRoot, twentyU
 	}
 	return &Server{pool: pool, emb: emb, jev: jv, fsRoot: fsRoot, twentyURL: twentyURL,
 		obsidianVault: os.Getenv("OBSIDIAN_VAULT"),
+		bibleRoot:     os.Getenv("BIBLE_HOST_PATH"),
 		evalDir:       os.Getenv("EVAL_DIR"), fontPath: os.Getenv("FONT_PATH"),
 		log: log, tmpl: t}, nil
 }
@@ -565,6 +568,11 @@ func (s *Server) openLink(uri string) string {
 		}
 		return "file://" + pct(path.Join(s.fsRoot, rest))
 	}
+	if rest, ok := strings.CutPrefix(uri, "bible:"); ok && s.bibleRoot != "" {
+		// Not an obsidian:// link: this corpus lives outside the vault on
+		// purpose, so Obsidian would not find it.
+		return "file://" + pct(path.Join(s.bibleRoot, rest))
+	}
 	if rest, ok := strings.CutPrefix(uri, "twenty:"); ok && s.twentyURL != "" {
 		return twenty.WebURL(s.twentyURL, rest)
 	}
@@ -647,6 +655,26 @@ type SearchResult struct {
 	Cleared   int     `json:"cleared"` // judged at or above RelThreshold
 }
 
+// nilIfEmpty turns an empty filter into SQL NULL, which the query reads as "no
+// restriction". A zero-length array would match nothing.
+func nilIfEmpty(v []string) any {
+	if len(v) == 0 {
+		return nil
+	}
+	return v
+}
+
+// parseSources reads a comma-separated source filter.
+func parseSources(v string) []string {
+	var out []string
+	for _, p := range strings.Split(v, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	if q == "" {
@@ -655,8 +683,9 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 90*time.Second)
 	defer cancel()
+	srcs := parseSources(r.URL.Query().Get("sources"))
 	id := s.activity.begin(q, "dashboard")
-	res, err := s.search(ctx, q, resultN)
+	res, err := s.search(ctx, q, resultN, srcs)
 	s.activity.end(id, res, err)
 	if err != nil {
 		httpErr(w, err)
@@ -667,7 +696,13 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 
 // search is the whole pipeline, shared by the dashboard and the MCP tool so
 // the two can never drift apart.
-func (s *Server) search(ctx context.Context, q string, limit int) (SearchResult, error) {
+// sources restricts the candidate set. Empty means every source.
+//
+// Applied INSIDE the candidate CTE, which makes it a pre-filter. Post-filtering
+// would search the whole index and then discard, silently returning fewer than
+// the requested candidates whenever the filter is selective: the narrower your
+// filter, the worse your results, for reasons nothing reports.
+func (s *Server) search(ctx context.Context, q string, limit int, sources []string) (SearchResult, error) {
 	start := time.Now()
 
 	var trace []Stage
@@ -699,6 +734,8 @@ func (s *Server) search(ctx context.Context, q string, limit int) (SearchResult,
 		    SELECT c.document_id, c.heading, c.body,
 		           (c.embedding <=> $1)::float8 AS dist
 		    FROM chunks c
+		    JOIN documents d ON d.id = c.document_id
+		    WHERE ($2::text[] IS NULL OR d.source = ANY($2))
 		    ORDER BY c.embedding <=> $1
 		    LIMIT 400
 		), agg AS (
@@ -715,7 +752,7 @@ func (s *Server) search(ctx context.Context, q string, limit int) (SearchResult,
 		FROM best b
 		JOIN documents d ON d.id = b.document_id
 		JOIN agg a ON a.document_id = b.document_id
-		ORDER BY b.dist`, qv)
+		ORDER BY b.dist`, qv, nilIfEmpty(sources))
 	if err != nil {
 		return SearchResult{}, err
 	}
