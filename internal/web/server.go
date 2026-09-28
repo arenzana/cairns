@@ -100,6 +100,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/similar", s.handleSimilar)
 	mux.HandleFunc("GET /api/eval", s.handleEval)
 	mux.HandleFunc("GET /api/activity", s.handleActivity)
+	mux.HandleFunc("POST /api/feedback", s.handleFeedbackPost)
+	mux.HandleFunc("GET /api/feedback", s.handleFeedbackGet)
 	mux.HandleFunc("POST /mcp", s.handleMCP)
 	return mux
 }

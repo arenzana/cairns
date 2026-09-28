@@ -210,6 +210,18 @@
   .surf.mcp{background:#22323A; color:var(--teal)}
   .surf.dashboard{background:#2A2620; color:var(--amber)}
 
+  /* thumbs */
+  .vote{display:inline-flex; gap:4px; margin-left:8px; vertical-align:middle}
+  .vote button{
+    background:transparent; border:1px solid var(--line); color:var(--muted);
+    border-radius:4px; padding:2px 7px; font:11px var(--mono); cursor:pointer;
+    line-height:1.4; letter-spacing:0;
+  }
+  .vote button:hover{border-color:var(--teal); color:var(--ink)}
+  .vote button.on.up{background:#1B3A2A; border-color:var(--ok); color:var(--ok)}
+  .vote button.on.down{background:#3A1F1D; border-color:#F2777A; color:#F2777A}
+  .votehint{font:10px var(--mono); color:var(--faint); margin-left:6px}
+
   .nothing{
     border-left:2px solid var(--amber); padding:8px 0 8px 14px; margin:10px 0;
     font-size:13px; color:var(--muted); max-width:78ch;
@@ -419,7 +431,7 @@
 
   <div class="cols">
   <div class="panel col-search">
-    <h2>Ask the corpus <span class="kbd-hint">press <kbd>/</kbd></span></h2>
+    <h2>Ask the corpus <span class="kbd-hint" id="votemeta"></span></h2>
     <form id="q">
       <input type="search" id="qi" placeholder="e.g. how do I roll back a failed deploy"
              autocomplete="off" spellcheck="false">
@@ -682,6 +694,7 @@ $("#q").addEventListener("submit", async e => {
   SEL = -1;
   $("#hits").innerHTML = `<div class="empty">embedding query and searching\u2026</div>`;
   try {
+    LASTQ = q;
     const r = await (await fetch("/api/search?q=" + encodeURIComponent(q))).json();
     paintResults(r);
   } catch (err) {
@@ -702,6 +715,7 @@ async function showSimilar(uri, title){
   SEL = -1;
   $("#hits").innerHTML = `<div class="empty">finding documents similar to ${esc(title||uri)}\u2026</div>`;
   try {
+    LASTQ = "";   // "more like this" is not a question, so a vote has no query to label
     const r = await (await fetch("/api/similar?uri=" + encodeURIComponent(uri))).json();
     paintResults(r);
   } catch (err) {
@@ -756,7 +770,7 @@ function renderHit(h){
     ${h.heading ? `<div class="h">${esc(h.heading)}</div>` : ""}
     <div class="s">${esc(h.snippet)}</div>
     ${sib}
-    <div class="u">${u}<button type="button" class="simbtn" data-uri="${esc(h.uri)}" data-title="${esc(h.title)}">similar</button></div>
+    <div class="u">${u}<button type="button" class="simbtn" data-uri="${esc(h.uri)}" data-title="${esc(h.title)}">similar</button><span class="vote" data-uri="${esc(h.uri)}" data-rank="${h.rank}" data-rel="${h.relevance}"><button type="button" class="vb up" title="Good result — becomes expect_any in the eval set">+</button><button type="button" class="vb down" title="Wrong result — becomes reject in the eval set">\u2212</button></span></div>
   </div>`;
 }
 
@@ -792,6 +806,7 @@ function paintResults(r){
   $("#hits").innerHTML = bar + tr + strong.map(renderHit).join("") +
     (weak.length ? `<details class="weak"><summary>show ${weak.length} below ${THRESH*100}%</summary>${weak.map(renderHit).join("")}</details>` : "");
   lightMap(strong);
+  loadVotes();
 }
 
 // One delegated handler for the results panel. Re-added after a refactor
@@ -810,6 +825,55 @@ $("#hits").addEventListener("click", e => {
   if (i >= 0) select(i);   // does not preventDefault: a click on the link still opens it
 });
 
+
+
+// ---- thumbs ---------------------------------------------------------------
+// A vote is NOT a ranking input. It is an eval label: up becomes expect_any,
+// down becomes reject. A handful of votes cannot steer the model without
+// overfitting to those exact votes, but they can build the golden set that
+// nobody ever sits down to write.
+let LASTQ = "";
+
+async function loadVotes(){
+  if (!LASTQ) return;
+  let m = {};
+  try { m = await (await fetch("/api/feedback?q=" + encodeURIComponent(LASTQ))).json(); } catch { return; }
+  document.querySelectorAll("#hits .vote").forEach(v => {
+    const verdict = m[v.dataset.uri];
+    v.querySelector(".up").classList.toggle("on", verdict === "up");
+    v.querySelector(".down").classList.toggle("on", verdict === "down");
+  });
+}
+
+$("#hits").addEventListener("click", async e => {
+  const b = e.target.closest(".vb");
+  if (!b) return;
+  e.preventDefault(); e.stopPropagation();
+  const v = b.closest(".vote");
+  const want = b.classList.contains("up") ? "up" : "down";
+  // Clicking the thumb you already chose retracts it, so a mistaken vote is
+  // not permanent.
+  const verdict = b.classList.contains("on") ? "clear" : want;
+  try {
+    await fetch("/api/feedback", {
+      method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query: LASTQ, uri: v.dataset.uri, verdict,
+                            rank: +v.dataset.rank, relevance: +v.dataset.rel}),
+    });
+  } catch { return; }
+  v.querySelector(".up").classList.toggle("on", verdict === "up");
+  v.querySelector(".down").classList.toggle("on", verdict === "down");
+  loadEvalCount();
+});
+
+// How many voted queries are ready to become eval cases.
+async function loadEvalCount(){
+  try {
+    const d = await (await fetch("/api/feedback")).json();
+    const el = $("#votemeta");
+    if (el) el.textContent = d.votes ? `${d.votes} votes · ${d.ready} ready as eval cases` : "";
+  } catch {}
+}
 
 // ---- live query activity -------------------------------------------------
 // Most searches here arrive over MCP from an agent, so without this the busiest
@@ -1251,7 +1315,7 @@ $("#mclose").onclick = () => { $("#modal").hidden = true; };
 $("#modal").addEventListener("click", e => { if (e.target.id === "modal") $("#modal").hidden = true; });
 $("#reset").onclick = () => { YAW = 0.6; PITCH = -0.25; ZOOM = 1; HL = null; drawMap(); };
 
-loadStats(); loadRecent(); loadMap(); loadStatus(); loadActivity();
+loadStats(); loadRecent(); loadMap(); loadStatus(); loadActivity(); loadEvalCount();
 setInterval(loadStatus, 1000);
 // 2s: a search takes ~1.5s, so anything slower and a running query is only
 // ever seen after it has already finished.

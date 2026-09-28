@@ -265,6 +265,24 @@ such as ParadeDB `pg_search` or VectorChord-bm25. Worth it if a whole class of
 queries is blind to the embedder; not worth it for a handful of notes.
 </details>
 
+### Watching it work
+
+The dashboard shows searches as they happen, from both surfaces. Most traffic
+arrives over MCP from an agent, which is otherwise the busiest user of the
+system and completely invisible: no way to see what was asked, whether it found
+anything, or what it cost.
+
+Three states are distinguished because they mean different things: still
+running, finished with an answer, and finished with **nothing above the
+threshold**. The third is not a failure, but it is the one worth noticing.
+
+Results carry thumbs. A vote is **not a ranking input**, it is an eval label:
+up becomes `expect_any`, down becomes `reject`. A handful of votes cannot steer
+a model without overfitting to those exact votes, but they can build the golden
+set that nobody ever sits down to write. `GET /api/feedback` returns them
+already shaped like `labels.json`, so promoting one is a copy rather than a
+translation.
+
 ## Measuring it
 
 Retrieval quality is not eyeballable. `cairns-eval` runs a labelled set and

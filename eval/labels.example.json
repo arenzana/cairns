@@ -22,22 +22,51 @@
     "",
     "Keep it small and real. Twelve questions you actually asked beat a",
     "hundred invented ones, but note that a set this size cannot resolve an",
-    "MRR difference under about 0.05: one case is worth 1/12 of the metric."
+    "MRR difference under about 0.05: one case is worth 1/12 of the metric.",
+    "",
+    "expect_none: the corpus genuinely cannot answer this, and the case",
+    "             passes when NOTHING clears the threshold. Without these,",
+    "             every case rewards finding something, so a change that",
+    "             made retrieval more eager would improve every number",
+    "             while making the system worse in the way users notice."
   ],
   "cases": [
     {
       "query": "how do I roll back a failed deployment",
-      "expect_any": ["fs:runbooks/deployments.md"],
-      "reject": ["fs:runbooks/first-time-setup.md"]
+      "expect_any": [
+        "fs:runbooks/deployments.md"
+      ],
+      "reject": [
+        "fs:runbooks/first-time-setup.md"
+      ]
     },
     {
       "query": "what did we decide about the pricing model",
-      "expect_any": ["fs:meetings/2026-03-11-pricing.md", "fs:decisions/pricing.md"]
+      "expect_any": [
+        "fs:meetings/2026-03-11-pricing.md",
+        "fs:decisions/pricing.md"
+      ]
     },
     {
       "query": "which vendor did we rule out and why",
-      "expect_any": ["fs:procurement/vendor-shortlist.md"],
-      "reject": ["fs:procurement/rfp-template.md"]
+      "expect_any": [
+        "fs:procurement/vendor-shortlist.md"
+      ],
+      "reject": [
+        "fs:procurement/rfp-template.md"
+      ]
+    },
+    {
+      "query": "what is the capital of Mongolia",
+      "expect_none": true
+    },
+    {
+      "query": "what is the boiling point of mercury",
+      "expect_none": true
+    },
+    {
+      "query": "how do I replace the timing belt on a Volvo 240",
+      "expect_none": true
     }
   ]
 }
