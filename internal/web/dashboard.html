@@ -228,6 +228,44 @@
   .vote button.on.down{background:#3A1F1D; border-color:#F2777A; color:#F2777A}
   .votehint{font:10px var(--mono); color:var(--faint); margin-left:6px}
 
+  /* ---- insights ---- */
+  :root{
+    /* Status palette, validated for CVD separation and contrast against this
+       surface rather than chosen by eye. Always shipped with a text label:
+       colour alone is never the encoding. */
+    --st-good:#63C58F; --st-warn:#F2D06A; --st-bad:#E05C5C;
+  }
+  .tip{border-bottom:1px dotted var(--teal); cursor:help; position:relative; outline:none}
+  .tip:hover::after, .tip:focus-visible::after{
+    content:attr(data-tip); position:absolute; left:0; top:calc(100% + 7px); z-index:60;
+    width:max-content; max-width:min(330px, 78vw);
+    background:#05090C; border:1px solid var(--teal); border-radius:5px;
+    padding:9px 11px; font:12px/1.5 -apple-system,var(--sans); color:var(--ink);
+    white-space:normal; letter-spacing:0; text-transform:none; box-shadow:0 6px 20px #0008;
+  }
+  .tip:focus-visible{outline:2px solid var(--teal); outline-offset:2px}
+
+  .itiles{display:grid; grid-template-columns:repeat(auto-fit,minmax(132px,1fr)); gap:10px; margin-bottom:22px}
+  .itile{background:var(--panel); border:1px solid var(--line); border-radius:4px; padding:11px 13px}
+  .itile dt{font:400 10px/1.4 var(--mono); letter-spacing:.09em; text-transform:uppercase; color:var(--muted); margin:0 0 5px}
+  .itile dd{margin:0; font:500 22px/1.1 var(--sans); font-variant-numeric:tabular-nums}
+  .itile dd small{font-size:12px; color:var(--muted); font-weight:400}
+  .itile.good dd{color:var(--st-good)} .itile.warn dd{color:var(--st-warn)} .itile.bad dd{color:var(--st-bad)}
+
+  .chart{margin:0 0 26px}
+  .chart h4{font:500 11px/1 var(--mono); letter-spacing:.11em; text-transform:uppercase; color:var(--muted); margin:0 0 4px}
+  .chart .why{font-size:12.5px; color:var(--muted); margin:0 0 11px; max-width:62ch; line-height:1.5}
+  .chart svg{width:100%; height:auto; display:block; overflow:visible}
+  .chart .legend{display:flex; gap:14px; margin-top:8px; font:10.5px var(--mono); color:var(--muted)}
+  .chart .legend i{display:flex; gap:5px; align-items:center; font-style:normal}
+  .chart .legend b{width:9px; height:9px; border-radius:2px; display:inline-block}
+  .guide{
+    border-left:2px solid var(--teal); background:#111A20; padding:11px 13px;
+    margin:0 0 24px; font-size:13px; line-height:1.55; color:var(--muted); max-width:66ch;
+  }
+  .guide b{color:var(--ink); font-weight:600}
+  #modal .sheet{width:min(940px,100%)}
+
   .nothing{
     border-left:2px solid var(--amber); padding:8px 0 8px 14px; margin:10px 0;
     font-size:13px; color:var(--muted); max-width:78ch;
@@ -509,6 +547,7 @@ async function loadStats(){
   // Retrieval quality belongs beside corpus size. Measuring it in a terminal
   // you have to remember to open is how a regression survives a week.
   try { EVAL = await (await fetch("/api/eval")).json(); } catch { EVAL = null; }
+  try { INSIGHTS = await (await fetch("/api/insights")).json(); } catch { INSIGHTS = null; }
 
   const cells = [
     ["documents", fmt(s.documents), "statdocs", "Show corpus breakdown"],
@@ -529,7 +568,7 @@ async function loadStats(){
   const sd = $("#statdocs");
   if (sd) sd.onclick = () => openModal("Corpus breakdown", $("#breakdown").innerHTML);
   const se = $("#stateval");
-  if (se) se.onclick = () => openModal("Retrieval quality", evalHTML());
+  if (se) se.onclick = () => openModal("Retrieval quality", insightsHTML());
   $("#sub").textContent = s.last_error ? "sweep error: " + s.last_error : "local retrieval over your corpus";
   if (s.last_error) $("#sub").style.color = "var(--amber)";
   renderBreakdown(s);
@@ -571,6 +610,172 @@ function evalHTML(){
           <span style="color:#5B6C7A">vec #${c.vector_rank||"-"}</span>
         </div>`).join("")}
     </div>`;
+}
+
+
+// ---- deep retrieval stats -------------------------------------------------
+// Everything here is measured from THIS corpus. No benchmark figures and no
+// plausible defaults: a dashboard showing an industry average teaches you about
+// the industry rather than about your own index.
+let INSIGHTS = null;
+
+const TIP = {
+  mrr: "Mean Reciprocal Rank. The average of 1÷rank of the first correct result: rank 1 scores 1.0, rank 2 scores 0.5, rank 10 scores 0.1. Shaped like human attention, since you read the first result and rarely the tenth.",
+  candrecall: "Candidate recall. How often the right document reached the 40-candidate set at all, before any judging. This is the CEILING: a document that never becomes a candidate cannot be rescued by any amount of reranking.",
+  ansrecall: "Answer recall. How often the right document actually cleared the relevance threshold and was shown. This is what you experience. The gap between this and candidate recall is what the precision stage is costing you.",
+  reject: "Reject violations. How often a document explicitly labelled as a plausible WRONG answer outranked the right one. Recall and MRR both reward finding things; neither notices this.",
+  abstain: "Abstention accuracy. On questions the corpus genuinely cannot answer, how often the system declined instead of returning its least-bad guess. Rarely measured, and very often the failure that reaches users.",
+  idf: "Inverse Document Frequency. How rare a word is across the corpus, used as a weight. A term in 2% of chunks is highly informative about those chunks; a term in 60% tells you almost nothing. Roughly ln(total chunks ÷ chunks containing the term).",
+  faith: "Faithfulness measures whether a generated answer is supported by the retrieved context. Not applicable here: this system returns document locators and never generates prose, so there is no answer that could be unfaithful.",
+  p50: "Median search latency end to end, from the activity feed. The reranking stage is normally about 87% of it.",
+  hitrate: "How often a search returned at least one result above the relevance threshold. A low rate is not necessarily bad: it can mean the system is correctly declining questions your corpus cannot answer.",
+  lift: "Rerank lift. How far the precision stage moved the correct answer up from where pure vector distance had placed it. This is the two-stage design justifying its cost, measured per case.",
+  chunk: "Chunk length distribution. Chunking is the highest-leverage decision in the pipeline and the one nobody revisits. A spike in the smallest bucket means the splitter is shredding documents.",
+};
+const tip = (k, label) => `<span class="tip" tabindex="0" data-tip="${esc(TIP[k])}">${esc(label)}</span>`;
+
+// Bars: thin marks, rounded data-end, direct label, recessive baseline.
+function barChart(rows, opt){
+  const W = 620, rowH = 26, pad = opt.labelW || 118;
+  const H = rows.length * rowH + 8;
+  const max = Math.max(...rows.map(r => r.v), opt.min || 0) || 1;
+  const bw = W - pad - 78;
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(opt.alt)}">
+    ${rows.map((r,i) => {
+      const y = i*rowH + 4, w = Math.max(2, r.v / max * bw);
+      return `<g>
+        <text x="${pad-10}" y="${y+13}" text-anchor="end" font-family="ui-monospace,monospace" font-size="11.5" fill="currentColor" opacity=".72">${esc(r.k)}</text>
+        <rect x="${pad}" y="${y+3}" width="${w}" height="13" rx="3" fill="${r.c || 'var(--teal)'}" opacity="${r.o ?? .85}"><title>${esc(r.k)}: ${esc(r.lbl || r.v)}</title></rect>
+        <text x="${pad + w + 8}" y="${y+14}" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity=".6">${esc(r.lbl ?? r.v)}</text>
+      </g>`;
+    }).join("")}
+    <line x1="${pad}" y1="4" x2="${pad}" y2="${H-4}" stroke="currentColor" stroke-opacity=".22"/>
+  </svg>`;
+}
+
+// Slope: where vector search put the answer, and where the rerank put it.
+function liftChart(cases){
+  const moved = cases.filter(c => c.found && c.vector_rank > 0);
+  if (!moved.length) return "";
+  const W = 620, H = 210, L = 150, R = W - 150;
+  const maxR = Math.max(...moved.flatMap(c => [c.vector_rank, c.rank]), 5);
+  const y = v => 30 + (v - 1) / (maxR - 1 || 1) * (H - 60);
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(TIP.lift)}">
+    <text x="${L}" y="16" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="currentColor" opacity=".65">by vector distance</text>
+    <text x="${R}" y="16" text-anchor="middle" font-family="ui-monospace,monospace" font-size="11" fill="var(--teal)">after reranking</text>
+    <line x1="${L}" y1="26" x2="${L}" y2="${H-22}" stroke="currentColor" stroke-opacity=".2"/>
+    <line x1="${R}" y1="26" x2="${R}" y2="${H-22}" stroke="currentColor" stroke-opacity=".2"/>
+    ${moved.map(c => {
+      const up = c.vector_rank > c.rank;
+      const col = up ? "var(--st-good)" : "currentColor";
+      return `<g opacity="${up ? .95 : .35}">
+        <line x1="${L}" y1="${y(c.vector_rank)}" x2="${R}" y2="${y(c.rank)}" stroke="${col}" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="${L}" cy="${y(c.vector_rank)}" r="4" fill="${col}"/>
+        <circle cx="${R}" cy="${y(c.rank)}" r="4" fill="${col}"><title>${esc(c.query)}: vector #${c.vector_rank} → #${c.rank}</title></circle>
+      </g>`;
+    }).join("")}
+    ${[1, Math.round(maxR/2), maxR].map(v =>
+      `<text x="${L-14}" y="${y(v)+4}" text-anchor="end" font-family="ui-monospace,monospace" font-size="10.5" fill="currentColor" opacity=".5">#${v}</text>`).join("")}
+  </svg>
+  <div class="legend"><i><b style="background:var(--st-good)"></b>promoted by the reranker</i><i><b style="background:currentColor;opacity:.4"></b>unchanged or lowered</i></div>`;
+}
+
+function insightsHTML(){
+  if (!EVAL || !EVAL.available) return `<div class="empty">No eval run found. Run ./bin/cairns-eval to populate this.</div>`;
+  const I = INSIGHTS, cases = EVAL.cases || [];
+  const answerable = cases.filter(c => c.rank !== undefined && !c.fault?.includes("eager") && c.query);
+  const rc = EVAL.candidate_recall ?? EVAL.recall;
+  const pct = v => (v*100).toFixed(0) + "%";
+
+  const tile = (k, label, val, cls, sub) =>
+    `<div class="itile ${cls||""}"><dt>${tip(k, label)}</dt><dd>${val}${sub?` <small>${sub}</small>`:""}</dd></div>`;
+
+  // rank distribution
+  const buckets = [["#1",0],["#2",0],["#3+",0],["missed",0]];
+  for (const c of cases){
+    if (c.query && c.rank === 0 && c.fault) { buckets[3][1]++; continue; }
+    if (c.rank === 1) buckets[0][1]++;
+    else if (c.rank === 2) buckets[1][1]++;
+    else if (c.rank >= 3) buckets[2][1]++;
+  }
+  const rankRows = buckets.map(([k,v],i) => ({
+    k, v, lbl: v, c: i === 3 ? "var(--st-bad)" : "var(--teal)", o: i === 3 ? .9 : .85 - i*.12,
+  }));
+
+  const terms = (I?.terms || []).map(t => ({
+    k: t.word, v: t.idf, lbl: `IDF ${t.idf.toFixed(2)} · ${t.pct.toFixed(1)}% of chunks`,
+    c: t.band === "common" ? "var(--st-warn)" : "var(--teal)",
+  }));
+
+  const hist = (I?.chunk_hist || []).map(b => ({k: b.label + " chars", v: b.n, lbl: fmt(b.n)}));
+  const u = I?.usage || {};
+
+  return `
+  <dl class="itiles">
+    ${tile("candrecall","candidate recall", pct(rc), rc>=0.9?"good":rc>=0.75?"warn":"bad")}
+    ${tile("ansrecall","answer recall", pct(EVAL.recall), EVAL.recall>=0.9?"good":EVAL.recall>=0.75?"warn":"bad")}
+    ${tile("mrr","MRR", EVAL.mrr.toFixed(3), EVAL.mrr>=0.75?"good":"warn")}
+    ${tile("reject","reject violations", EVAL.reject_violations ?? 0, (EVAL.reject_violations||0)===0?"good":"bad")}
+    ${EVAL.abstention_cases ? tile("abstain","abstention", `${EVAL.abstention_ok}/${EVAL.abstention_cases}`, EVAL.abstention_ok===EVAL.abstention_cases?"good":"bad") : ""}
+    ${u.p50 ? tile("p50","median latency", u.p50, "", "ms") : ""}
+    ${u.searched ? tile("hitrate","answered", `${u.answered}/${u.searched}`, "") : ""}
+  </dl>
+
+  <div class="guide">
+    <b>How to read this.</b> ${tip("candrecall","Candidate recall")} is the ceiling and
+    ${tip("ansrecall","answer recall")} is what you get. When they are equal, the precision stage is
+    losing nothing. When candidate recall is high and answer recall is low, the reranker is
+    discarding good documents. When both are low, the fault is upstream in chunking or embedding,
+    and no prompt or threshold change will help.
+    ${EVAL.recall_misses ? `<br><br>This run: <b>${EVAL.recall_misses} recall ${EVAL.recall_misses===1?"miss":"misses"}</b> (fix chunking or embedding) and <b>${EVAL.precision_misses||0} precision</b> (fix reranking).` : ""}
+  </div>
+
+  <div class="chart">
+    <h4>Where the right answer landed</h4>
+    <p class="why">Rank of the correct document across ${cases.length} labelled cases. ${tip("mrr","MRR")}
+       weights these by 1÷rank, so moving one case from #2 to #1 is worth more than moving three from #9 to #6.</p>
+    ${barChart(rankRows, {alt:"Distribution of the rank at which the correct document appeared", labelW:78})}
+  </div>
+
+  <div class="chart">
+    <h4>What the reranker is buying</h4>
+    <p class="why">${esc(TIP.lift)}</p>
+    ${liftChart(cases)}
+  </div>
+
+  <div class="chart">
+    <h4>Term rarity, and why keyword search needs ${tip("idf","IDF")}</h4>
+    <p class="why">Measured on your corpus. A word in most chunks carries almost no information about
+       which chunk you want; a rare one carries a great deal. Ranking without this weighting is why a
+       naive keyword search returns whichever document says <em>the</em> most often.</p>
+    ${barChart(terms, {alt:"Inverse document frequency of common versus informative terms in this corpus", labelW:132})}
+    <div class="legend"><i><b style="background:var(--st-warn)"></b>most common, near-zero weight</i><i><b style="background:var(--teal)"></b>informative, high weight</i></div>
+  </div>
+
+  <div class="chart">
+    <h4>${tip("chunk","Chunk length")} distribution</h4>
+    <p class="why">${fmt(I?.corpus?.single_chunk_docs ?? 0)} documents are a single chunk, and
+       ${I?.corpus?.chunks ? pct(I.corpus.with_heading / I.corpus.chunks) : "—"} of chunks carry a heading path,
+       which is what lets a passage be embedded as "in this document, under this heading" rather than as an orphan.</p>
+    ${barChart(hist, {alt:"Distribution of chunk lengths in characters", labelW:104})}
+  </div>
+
+  <div class="guide">
+    <b>${tip("faith","Faithfulness")} is deliberately absent.</b> It measures whether a generated answer is
+    supported by its retrieved context. This system returns document locators and never generates prose,
+    so there is no answer that could be unfaithful. If you add a generation step, this is the first
+    metric to add with it.
+  </div>
+
+  <div class="bdsec"><h3>Cases</h3>
+    ${cases.map(c => `
+      <div class="evalrow">
+        <span class="${c.found?"ok":"miss"}">${c.found?"\\u2713":"\\u2717"}</span>
+        <span class="q">${esc(c.query)}</span>
+        <span style="color:var(--muted)">${c.found ? (c.rank?`#${c.rank} \\u00b7 ${(c.relevance*100).toFixed(0)}%`:"declined") : (c.fault||"miss")}</span>
+        <span style="color:#5B6C7A">${c.vector_rank?`vec #${c.vector_rank}`:""}</span>
+      </div>`).join("")}
+  </div>`;
 }
 
 function bars(items, unit){

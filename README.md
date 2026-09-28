@@ -276,6 +276,14 @@ Three states are distinguished because they mean different things: still
 running, finished with an answer, and finished with **nothing above the
 threshold**. The third is not a failure, but it is the one worth noticing.
 
+The **retrieval** stat opens a deeper view: candidate recall against answer
+recall, MRR, reject violations, abstention, median latency, where the right
+answer landed, what the reranker is buying, and the term-rarity distribution
+that shows why keyword ranking needs IDF. Every figure is measured from your own
+corpus, and every acronym has a tooltip. Faithfulness is deliberately absent and
+says why: this system returns locators and never generates prose, so there is no
+answer that could be unfaithful.
+
 **Click a question to run it again.** Since the feed is mostly agent traffic,
 that is the fastest way to see what an agent actually got back for something it
 asked on its own.

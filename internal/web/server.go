@@ -102,6 +102,7 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /api/activity", s.handleActivity)
 	mux.HandleFunc("POST /api/feedback", s.handleFeedbackPost)
 	mux.HandleFunc("GET /api/feedback", s.handleFeedbackGet)
+	mux.HandleFunc("GET /api/insights", s.handleInsights)
 	mux.HandleFunc("POST /mcp", s.handleMCP)
 	return mux
 }
