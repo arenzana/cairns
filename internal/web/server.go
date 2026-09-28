@@ -25,6 +25,7 @@ import (
 	cembed "github.com/arenzana/cairns/internal/embed"
 	"github.com/arenzana/cairns/internal/jev"
 	"github.com/arenzana/cairns/internal/pca"
+	"github.com/arenzana/cairns/internal/source/paperless"
 	"github.com/arenzana/cairns/internal/source/twenty"
 )
 
@@ -49,6 +50,8 @@ type Server struct {
 	// evalDir holds the JSON written by cairns-eval. Read-only, and absent in a
 	// deployment that never runs the harness.
 	evalDir string
+	// paperlessURL turns a paperless: locator into a link to the document.
+	paperlessURL string
 	// bibleRoot resolves a bible: locator, the HOST path.
 	bibleRoot string
 	// activity is a small in-memory window onto searches as they happen. Most
@@ -76,6 +79,7 @@ func New(pool *pgxpool.Pool, emb *cembed.Client, jv *jev.Client, fsRoot, twentyU
 	return &Server{pool: pool, emb: emb, jev: jv, fsRoot: fsRoot, twentyURL: twentyURL,
 		obsidianVault: os.Getenv("OBSIDIAN_VAULT"),
 		bibleRoot:     os.Getenv("BIBLE_HOST_PATH"),
+		paperlessURL:  os.Getenv("PAPERLESS_WEB_URL"),
 		evalDir:       os.Getenv("EVAL_DIR"), fontPath: os.Getenv("FONT_PATH"),
 		log: log, tmpl: t}, nil
 }
@@ -513,8 +517,16 @@ func groupOf(uri string) string {
 	if !ok {
 		return "other"
 	}
+	scheme, _, _ := strings.Cut(uri, ":")
 	dir := path.Dir(rest)
 	if dir == "." || dir == "/" {
+		// A document with no folder groups under its SOURCE, not under "root".
+		// Otherwise a whole corpus that happens to be flat, scripture for
+		// instance, is drawn in the same colour as the loose notes at the top
+		// of the vault and is effectively invisible on the map.
+		if scheme != "fs" {
+			return scheme
+		}
 		return "root"
 	}
 	if i := strings.IndexByte(dir, '/'); i > 0 {
@@ -572,6 +584,9 @@ func (s *Server) openLink(uri string) string {
 		// Not an obsidian:// link: this corpus lives outside the vault on
 		// purpose, so Obsidian would not find it.
 		return "file://" + pct(path.Join(s.bibleRoot, rest))
+	}
+	if rest, ok := strings.CutPrefix(uri, "paperless:"); ok && s.paperlessURL != "" {
+		return paperless.WebURL(s.paperlessURL, rest)
 	}
 	if rest, ok := strings.CutPrefix(uri, "twenty:"); ok && s.twentyURL != "" {
 		return twenty.WebURL(s.twentyURL, rest)

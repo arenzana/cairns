@@ -121,6 +121,10 @@ services:
       # error, so cairns still runs with just the filesystem source.
       TWENTY_BASE_URL: ${TWENTY_BASE_URL:-}
       TWENTY_API_KEY: ${TWENTY_API_KEY:-}
+      # paperless-ngx. OCR has already extracted the text, which is what makes
+      # scanned paper embeddable at all.
+      PAPERLESS_URL: ${PAPERLESS_URL:-}
+      PAPERLESS_TOKEN: ${PAPERLESS_TOKEN:-}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -163,6 +167,8 @@ services:
       # Optional: an Obsidian vault NAME turns results into obsidian:// links.
       OBSIDIAN_VAULT: ${OBSIDIAN_VAULT:-}
       BIBLE_HOST_PATH: ${BIBLE_HOST_PATH:-}
+      # Used only to turn a paperless: locator into a link to the document.
+      PAPERLESS_WEB_URL: ${PAPERLESS_URL:-}
       # Injected at `docker compose up` time, e.g. by running compose under
       # `op run`. Note it is then stored in the container config so a restart
       # after reboot works without 1Password being unlocked.

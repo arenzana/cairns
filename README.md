@@ -182,6 +182,7 @@ import (
 |---|---|---|
 | `fs` | **on** | `FS_HOST_PATH`, optional `OBSIDIAN_VAULT` for `obsidian://` links |
 | `bible` | off | `BIBLE_HOST_PATH`, a corpus converted by `scripts/usx2md.py` |
+| `paperless` | off | `PAPERLESS_URL` + `PAPERLESS_TOKEN` |
 | `twenty` | off | `TWENTY_BASE_URL` + `TWENTY_API_KEY` |
 
 Search can be restricted: `sources: ["bible"]` on the MCP tool, `?sources=fs` on
